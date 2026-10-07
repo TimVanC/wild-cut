@@ -119,9 +119,10 @@ def _slice_curve(curve: MotionCurve, start: float, end: float) -> MotionCurve:
 
 
 def heuristic_category(shot: BankShot, box_area: float) -> str:
+    """No-Claude fallback: fast = hero, a large slow-moving subject = aura, still = broll."""
     if shot.max_motion >= 0.25:
         return "hero"
-    if box_area >= 0.12 and shot.max_motion >= 0.03:
+    if box_area >= 0.10 and shot.max_motion >= 0.012:
         return "aura"
     if shot.max_motion < 0.06:
         return "broll"
