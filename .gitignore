@@ -18,3 +18,4 @@ inbox/*
 tests_out/
 *.log
 .DS_Store
+tests_out/
