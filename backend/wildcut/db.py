@@ -14,7 +14,7 @@ from wildcut.config import get_settings
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 def new_id() -> str:
