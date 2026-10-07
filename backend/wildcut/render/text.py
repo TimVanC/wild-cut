@@ -1,7 +1,6 @@
 """Title rendering with Pillow: serif animal-name titles, letter-spacing, shadow, animations."""
 from __future__ import annotations
 
-import math
 from functools import lru_cache
 from pathlib import Path
 

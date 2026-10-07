@@ -5,7 +5,6 @@ import copy
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from wildcut.media import probe
 from wildcut.planner import edl as edlmod

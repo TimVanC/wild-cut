@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from wildcut.analysis.tracking import CropPath
-from wildcut.media import MediaError, probe
+from wildcut.media import MediaError
 from wildcut.planner import edl as edlmod
 from wildcut.planner.speed import _rate_at, source_at
 from wildcut.render import effects as fx

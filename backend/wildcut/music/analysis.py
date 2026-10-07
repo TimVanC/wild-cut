@@ -162,7 +162,6 @@ def detect_bass_hits(y: np.ndarray, sr: int, beats: list[float]) -> list[float]:
 
 def pick_downbeats(beats: list[float], y: np.ndarray, sr: int, drop: float | None = None) -> list[float]:
     """Phase (0..3) whose beats carry the most low-band energy; a known drop must be a downbeat."""
-    import librosa
 
     if len(beats) < 4:
         return list(beats)

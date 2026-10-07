@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from wildcut.api.app import _project, app, project_out
 from wildcut.db import Project, get_session

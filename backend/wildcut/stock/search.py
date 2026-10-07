@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel, Field
 
-from wildcut.claude import BudgetTracker, ClaudeClient, get_client, image_block
+from wildcut.claude import BudgetTracker, ClaudeClient, get_client
 from wildcut.config import get_settings
 from wildcut.stock.base import StockAdapter, StockError, StockResult
 

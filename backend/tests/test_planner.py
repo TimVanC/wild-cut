@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wildcut.analysis.moments import Moment, build_moments
+from wildcut.analysis.moments import build_moments
 from wildcut.analysis.motion import compute_motion
 from wildcut.analysis.shots import detect_shots
 from wildcut.analysis.vision import heuristic_tags

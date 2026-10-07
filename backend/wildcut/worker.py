@@ -9,7 +9,7 @@ import logging
 import time
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from wildcut.config import get_settings
 from wildcut.db import Project, get_engine

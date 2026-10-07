@@ -20,8 +20,7 @@ from wildcut.planner import edl as edlmod
 from wildcut.planner.planner import ClipInfo
 from wildcut.planner.speed import timeline_between
 from wildcut.services import edl_ops
-from wildcut.services.planning import clip_infos, load_grid, load_moments, move_cursor, plan_project, save_edl_version
-from wildcut.services.projects import project_clips
+from wildcut.services.planning import clip_infos, load_grid, move_cursor, plan_project, save_edl_version
 
 
 class ToolError(ValueError):

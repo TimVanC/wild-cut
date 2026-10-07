@@ -179,7 +179,12 @@ filters / classification / two distinct edits.
   re-rendered), Director "clip 3 first, then clip 1, then clip 2" (exact order, song window
   moved so the drop hits the pinned hero, title on the drop), full 1080 export with the sound
   offset ("start it at 0:10") and caption.
-- (The remaining presets and the documentary run are recorded below as they complete.)
+- Documentary: "New from documentary" with the synthetic 9.5-minute letterboxed film, Analyze
+  (228 s on this machine: letterbox 3.5 s, proxy 47 s, shots 77 s, motion 77 s at 12 fps,
+  filters 22.5 s; 78 shots, 67 kept, 3 black / 2 short / 4 text / 2 duplicate rejected), the
+  90 s track on the Music tab, "Generate 2 edits" -> two 65.0 s edits with intro (3 BROLL/AURA
+  clips), beat-locked build, the hero on the drop (38.995 s), post on downbeats, outro; zero
+  HERO/AURA shots shared between the two edits; both open in the editor with Director chat.
 
 ## What Tim should test first with real footage and a real phonk track
 

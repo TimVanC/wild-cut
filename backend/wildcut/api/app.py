@@ -7,21 +7,20 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from wildcut import __version__
 from wildcut.config import get_settings
 from wildcut.db import BeatGrid, ChatMessage, Clip, Edl, Export, Job, LibraryClip, Moment as MomentRow, Project, get_session, now
-from wildcut.media import MediaError, probe
+from wildcut.media import MediaError
 from wildcut.planner import edl as edlmod
 from wildcut.planner.presets import list_presets, load_preset
 from wildcut.planner.showdown import blockers, list_layouts
 from wildcut.services import edl_ops
-from wildcut.services.analysis import ensure_proxy
 from wildcut.services.jobs import enqueue
 from wildcut.services.planning import clip_infos, current_edl, load_moments, move_cursor, plan_project, save_edl_version
 from wildcut.services.preview import changed_ranges

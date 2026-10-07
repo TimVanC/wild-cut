@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Callable
 
 from wildcut.media import MediaError
-from wildcut.planner import edl as edlmod
 from wildcut.render.composer import RenderSettings, render_video
 from wildcut.services.projects import project_dir
 

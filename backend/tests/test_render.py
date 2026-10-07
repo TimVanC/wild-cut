@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from wildcut.media import extract_frames, probe
-from wildcut.planner import edl as edlmod
 from wildcut.render.composer import RenderSettings, render, render_frame, render_video
 from wildcut.render.text import render_title_layer
 

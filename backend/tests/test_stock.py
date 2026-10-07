@@ -1,7 +1,6 @@
 """Stock adapters against mocked HTTP; search helper fallbacks; library import."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import httpx

@@ -15,6 +15,7 @@ setup:
 
 assets:
 	$(PY) tools/make_test_assets.py
+	$(PY) tools/make_documentary_asset.py
 
 api:
 	cd backend && ../$(PY) -m wildcut.api
