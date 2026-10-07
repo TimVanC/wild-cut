@@ -178,7 +178,10 @@ filters / classification / two distinct edits.
   title, chunked preview; swap a moment from the inspector (pinned, preview chunks
   re-rendered), Director "clip 3 first, then clip 1, then clip 2" (exact order, song window
   moved so the drop hits the pinned hero, title on the drop), full 1080 export with the sound
-  offset ("start it at 0:10") and caption.
+  offset ("start it at 0:10") and caption. Frame check on the exported MP4: frame 64 (the drop,
+  2.12 s at 30 fps) is the white flash, frames 63 and 67 are normal, and the serif title is on
+  screen from frame 67. Regenerate in the editor afterwards (v6) kept the chat-pinned order
+  3, 1, 2 with the hero still on the drop.
 - Cinematic, music-synced, 1:1 (wizard switches the aspect automatically): 5 shots of 3 to 4 s,
   only push-in and fade-to-black effects, the Cormorant title fading in over the hero shot, hero
   on the drop.
