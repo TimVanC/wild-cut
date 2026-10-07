@@ -1,0 +1,54 @@
+{
+  "id": "showdown",
+  "name": "Showdown",
+  "description": "Animal stat comparison: black-and-white cards side by side, ticking counters, SLOW stamps, winner reveal on the drop.",
+  "default_aspect": "9:16",
+  "default_intensity": "med",
+  "structure": "showdown",
+  "showdown": {
+    "layout": "default",
+    "challenger_seconds": 1.6,
+    "winner_seconds": 2.5,
+    "winner_clip_seconds": 4.0,
+    "slide_in": 0.25,
+    "slide_out": 0.2,
+    "counter_fraction": 0.6,
+    "stamp_at": 0.8,
+    "stats": {
+      "top_speed":   {"label": "TOP SPEED",   "units": ["km/h", "mph"], "default_unit": "km/h", "stamp": "SLOW",  "winner_header": "FASTEST ANIMAL", "higher_wins": true},
+      "bite_force":  {"label": "BITE FORCE",  "units": ["PSI", "N"],     "default_unit": "PSI",  "stamp": "WEAK",  "winner_header": "STRONGEST BITE", "higher_wins": true},
+      "weight":      {"label": "WEIGHT",      "units": ["kg", "lb"],     "default_unit": "kg",   "stamp": "SMALL", "winner_header": "HEAVIEST ANIMAL", "higher_wins": true},
+      "jump_height": {"label": "JUMP HEIGHT", "units": ["m", "ft"],      "default_unit": "m",    "stamp": "LOW",   "winner_header": "HIGHEST JUMPER", "higher_wins": true},
+      "lifespan":    {"label": "LIFESPAN",    "units": ["years"],        "default_unit": "years","stamp": "SHORT", "winner_header": "LONGEST LIVED", "higher_wins": true},
+      "custom":      {"label": "STAT",        "units": [""],             "default_unit": "",     "stamp": "LOSER", "winner_header": "WINNER", "higher_wins": true}
+    }
+  },
+  "effects": {
+    "shake": {
+      "on": "bass_hit",
+      "duration_ms": {"low": 100, "med": 140, "high": 200},
+      "amplitude": {"low": 0.006, "med": 0.010, "high": 0.016},
+      "rotation_deg": {"low": 0.0, "med": 0.2, "high": 0.4}
+    },
+    "flash": {"on": "drop", "frames": {"low": 2, "med": 3, "high": 4}},
+    "chromatic": null,
+    "zoom_punch": null,
+    "glitch": null,
+    "visual_peak": []
+  },
+  "overlays": {"grain": 0.05, "vignette": 0.2, "letterbox": false},
+  "grade": {"lut": "showdown.cube", "lut_strength": 1.0, "contrast": 1.0, "saturation": 1.0, "lift": 0.0, "gamma": 1.0},
+  "text": {
+    "font": "Anton-Regular.ttf",
+    "size_frac": 0.09,
+    "letter_spacing": 0.04,
+    "color": "#FFFFFF",
+    "stroke_px": 0,
+    "shadow": 0.5,
+    "animation": "slam",
+    "hold": 1.2,
+    "shake": true,
+    "position": [0.5, 0.12]
+  },
+  "transitions": {"between_sections": "cut", "fade_in": 0.0, "fade_out": 0.5}
+}

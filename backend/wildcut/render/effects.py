@@ -71,7 +71,10 @@ def fade_black_opacity(effects: list[dict], t: float) -> float:
     for e in effects:
         if e["type"] == "fade_black":
             p = min(1.0, max(0.0, t - e["t"]) / max(e["duration"], 1e-6))
-            op = max(op, 1 - abs(2 * p - 1))   # triangle: black at the middle of the dip
+            if e.get("params", {}).get("hard"):
+                op = max(op, 1.0 if p >= 0.12 else p / 0.12)   # snap to black and hold
+            else:
+                op = max(op, 1 - abs(2 * p - 1))   # triangle: black at the middle of the dip
     return min(1.0, op)
 
 
@@ -156,3 +159,24 @@ class Overlays:
             out[: self.bar] = 0
             out[-self.bar:] = 0
         return out
+
+
+def motion_blur_strength(effects: list[dict], t: float) -> float:
+    st = 0.0
+    for e in effects:
+        if e["type"] == "motion_blur":
+            p = min(1.0, max(0.0, t - e["t"]) / max(e["duration"], 1e-6))
+            st = max(st, float(e.get("params", {}).get("strength", 1.0)) * p)
+    return st
+
+
+def apply_motion_blur(frame: np.ndarray, strength: float) -> np.ndarray:
+    """Horizontal directional blur whose length grows with strength (the chase 'blur pass')."""
+    if strength <= 0.02:
+        return frame
+    import cv2
+
+    k = max(3, int(round(strength * frame.shape[1] * 0.08)) | 1)
+    kernel = np.zeros((1, k), np.float32)
+    kernel[0, :] = 1.0 / k
+    return cv2.filter2D(frame, -1, kernel, borderType=cv2.BORDER_REFLECT_101)

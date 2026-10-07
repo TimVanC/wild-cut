@@ -1,0 +1,27 @@
+{
+  "id": "default",
+  "name": "Two cards, stat pill, fact line",
+  "description": "Champion left, challenger right. Name header, stat pill with a ticking counter, media in the middle, one-line sourced fact at the bottom.",
+  "canvas": {"background": "#0B0B0C", "padding": 0.04, "gap": 0.03},
+  "header": {"font": "BebasNeue-Regular.ttf", "size_frac": 0.075, "color": "#FFFFFF", "letter_spacing": 0.03, "y": 0.10, "text": "{stat_label}"},
+  "card": {
+    "background": "#161618",
+    "border": "#2A2A2E",
+    "border_px": 2,
+    "radius": 0.025,
+    "top": 0.17,
+    "bottom": 0.90,
+    "name": {"font": "Anton-Regular.ttf", "size_frac": 0.052, "color": "#FFFFFF", "y": 0.055, "letter_spacing": 0.02},
+    "pill": {"font": "BebasNeue-Regular.ttf", "size_frac": 0.056, "color": "#0B0B0C", "background": "#FFFFFF", "y": 0.145, "height": 0.07, "width": 0.78, "unit_size_frac": 0.03},
+    "media": {"top": 0.22, "bottom": 0.80, "inset": 0.05, "radius": 0.02},
+    "fact": {"font": "CormorantGaramond-SemiBold.ttf", "size_frac": 0.03, "color": "#D9D9DC", "y": 0.90, "max_lines": 2, "letter_spacing": 0.0}
+  },
+  "stamp": {"font": "Anton-Regular.ttf", "size_frac": 0.11, "color": "#FFFFFF", "stroke": "#E53935", "stroke_px": 6, "angle_deg": -14, "y": 0.5},
+  "winner": {
+    "header": {"font": "Anton-Regular.ttf", "size_frac": 0.095, "color": "#FFFFFF", "y": 0.11, "letter_spacing": 0.03, "text": "{winner_header}"},
+    "card_width": 0.86,
+    "top": 0.2,
+    "bottom": 0.92
+  },
+  "animation": {"challenger_from": "right", "counter_ease": "out_cubic", "stamp_scale_from": 1.6, "stamp_frames": 4}
+}

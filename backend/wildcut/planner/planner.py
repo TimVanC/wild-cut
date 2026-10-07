@@ -99,6 +99,10 @@ class Planner:
             s -= 0.2
         return s
 
+    def choose_hero(self) -> Moment | None:
+        """The moment that lands on the drop (or the visual payoff). Presets may override."""
+        return self.best_unused(min_len=0.8)
+
     def raw_rank(self, m: Moment) -> float:
         """Deterministic rank (no seed jitter) used when choosing the hero among locked clips."""
         return m.score + (0.5 if m.id in self.starred else 0.0) - (0.2 if m.subject_visible is False else 0.0)
@@ -261,7 +265,7 @@ class Planner:
             hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
-            hero_m = self.best_unused(min_len=0.8)
+            hero_m = self.choose_hero()
         if hero_m is None:
             self.plan_visual()
             return
@@ -626,7 +630,7 @@ class Planner:
             hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
-            hero_m = self.best_unused(min_len=0.8)
+            hero_m = self.choose_hero()
         if hero_m is None:
             self.notes.append("No usable moments.")
             return

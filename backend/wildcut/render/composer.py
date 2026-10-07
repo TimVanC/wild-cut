@@ -172,6 +172,10 @@ def render_video(edl: dict, out_path: str | Path, settings: RenderSettings | Non
     if last <= first:
         last = first + 1
     tmp = Path(tempfile.mkdtemp(prefix="wildcut_render_"))
+    if card_renderer is None and edl.get("showdown"):
+        from wildcut.render.cards import make_card_renderer
+
+        card_renderer = make_card_renderer(edl, out_w, out_h)
     enc = Encoder(out_path, out_w, out_h, fps, settings.crf, settings.preset)
     renderers: dict[str, ClipRenderer] = {}
     current_id = None
@@ -195,6 +199,7 @@ def render_video(edl: dict, out_path: str | Path, settings: RenderSettings | Non
                     current_id = clip["id"]
                 frame = renderers[clip["id"]].frame(t, k, geom)
                 frame = grade.apply(frame)
+            frame = fx.apply_motion_blur(frame, fx.motion_blur_strength(act, t))
             px = fx.chromatic_px(act, t, out_w)
             if px:
                 frame = fx.apply_chromatic(frame, px)
@@ -215,6 +220,8 @@ def render_video(edl: dict, out_path: str | Path, settings: RenderSettings | Non
     finally:
         for r in renderers.values():
             r.close()
+        if card_renderer is not None and hasattr(card_renderer, "close"):
+            card_renderer.close()
         enc.close()
     if progress:
         progress(1.0)
@@ -253,6 +260,10 @@ def render_frame(edl: dict, t: float, width: int = 540, card_renderer: Callable 
     act = fx.active(effects, t, fps)
     geom = fx.geometry(act, t, k, fps)
     clip = edlmod.clip_at(edl, t)
+    if card_renderer is None and edl.get("showdown"):
+        from wildcut.render.cards import make_card_renderer
+
+        card_renderer = make_card_renderer(edl, out_w, out_h)
     if clip is None:
         frame = np.zeros((out_h, out_w, 3), np.uint8)
     elif clip.get("kind") == "card" and card_renderer is not None:
@@ -263,6 +274,7 @@ def render_frame(edl: dict, t: float, width: int = 540, card_renderer: Callable 
             frame = grade.apply(r.frame(t, k, geom))
         finally:
             r.close()
+    frame = fx.apply_motion_blur(frame, fx.motion_blur_strength(act, t))
     px = fx.chromatic_px(act, t, out_w)
     if px:
         frame = fx.apply_chromatic(frame, px)

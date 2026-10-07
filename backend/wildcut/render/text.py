@@ -23,9 +23,32 @@ FONT_ALIASES = {
 }
 
 
+EMOJI_FONTS = [
+    "C:/Windows/Fonts/seguiemj.ttf",
+    "/System/Library/Fonts/Apple Color Emoji.ttc",
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+]
+
+
+def emoji_font(size: int) -> ImageFont.FreeTypeFont | None:
+    for path in EMOJI_FONTS:
+        if Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return None
+
+
 def resolve_font(name: str, size: int) -> ImageFont.FreeTypeFont:
     fonts_dir = get_settings().assets_dir / "fonts"
     key = name.lower()
+    if key == "emoji":
+        f = emoji_font(size)
+        if f is not None:
+            return f
+        name = "Cinzel-Bold.ttf"
+        key = name.lower()
     file, variation = FONT_ALIASES.get(key, (name, None))
     path = Path(file)
     if not path.is_absolute():
@@ -57,6 +80,21 @@ def _hex(color: str) -> tuple[int, int, int]:
 def render_title_layer(text: str, font_name: str, size: int, letter_spacing: float, color: str, shadow: float,
                        stroke_px: int, max_width: int) -> Image.Image:
     """RGBA image of the title (tight bounds plus shadow margin). Cached per unique look."""
+    if font_name.lower() == "emoji":
+        f = emoji_font(size)
+        if f is None:
+            return Image.new("RGBA", (4, 4), (0, 0, 0, 0))   # no emoji font on this machine: skip the marker
+        try:
+            box = f.getbbox(text, embedded_color=True)
+        except TypeError:
+            box = f.getbbox(text)
+        W, H = box[2] - box[0] + size, box[3] - box[1] + size
+        layer = Image.new("RGBA", (max(4, W), max(4, H)), (0, 0, 0, 0))
+        try:
+            ImageDraw.Draw(layer).text((size / 2 - box[0], size / 2 - box[1]), text, font=f, embedded_color=True)
+        except TypeError:
+            ImageDraw.Draw(layer).text((size / 2 - box[0], size / 2 - box[1]), text, font=f, fill=(255, 255, 255, 255))
+        return layer
     font = resolve_font(font_name, size)
     spacing = int(round(letter_spacing * size))
     # shrink to fit max_width
