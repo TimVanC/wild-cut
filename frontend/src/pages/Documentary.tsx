@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { api, fmtShort } from '../api'
@@ -25,6 +25,7 @@ export default function Documentary() {
   const [filter, setFilter] = useState<string>('hero')
   const [browse, setBrowse] = useState(false)
   const [err, setErr] = useState('')
+  useEffect(() => { if (opts.path && !path) setPath(opts.path); if (opts.animal && animal === 'auto') setAnimal(opts.animal); if (opts.edits) setEdits(opts.edits) }, [opts.path, opts.animal, opts.edits])  // eslint-disable-line react-hooks/exhaustive-deps
   const inv = () => { qc.invalidateQueries({ queryKey: ['documentary', pid] }); qc.invalidateQueries({ queryKey: ['project', pid] }) }
   const register = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/register`, { path: path || opts.path, animal: animal || 'auto', edits }), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
   const analyze = useMutation({ mutationFn: async (force: boolean) => { if (!doc.data?.registered) await register.mutateAsync(); return post(`/api/projects/${pid}/documentary/analyze?force=${force}`) }, onSuccess: inv, onError: (e: Error) => setErr(e.message) })

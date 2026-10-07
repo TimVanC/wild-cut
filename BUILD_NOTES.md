@@ -54,3 +54,34 @@
   540p proxy (max 12 frames per call) and are stripped before the turn is stored.
 - Without Claude the Director still handles "undo" and "clip 2 first, then clip 3" ordering
   offline and tells Tim that Claude is not configured for anything else.
+
+## Documentary mode decisions
+
+- Shots of a documentary are not extracted into files. A child edit project's clips point at
+  the original film with a `window_in` / `window_out` and share one cached 540p proxy, so
+  generating edits is instant and the final export reads the full-resolution source directly.
+  The letterbox crop is stored on each clip (`src_crop`) and applied by the renderer only when
+  it reads the uncropped source (the proxy is cropped when it is built).
+- Shot detection uses PySceneDetect's AdaptiveDetector (adaptive_threshold 3.0, min_content_val
+  10) instead of ContentDetector 27: on the synthetic film ContentDetector found 53% of the cuts
+  (same-palette shots barely move the HSV metric), AdaptiveDetector found 97% with no false cuts.
+- Cheap filters: black frames (mean luma < 14 on every keyframe), shots under 0.5 s, burned-in
+  text (rows of 8+ letter-sized, equal-height, evenly spaced high-contrast components; no OCR
+  dependency), and duplicates (dHash of the first and middle keyframes, Hamming <= 6 against
+  every kept shot). People/presenters and logos/watermarks are left to Claude's `has_people` /
+  `has_text` tags; the static-corner logo heuristic was removed because it also fired on
+  locked-off shots with textured corners.
+- Classification sends one keyframe per shot, 12 shots per call, highest motion first, capped
+  at 1500 shots, under a separate `CLAUDE_BUDGET_PER_DOCUMENTARY_USD` (default 6.0). Without
+  Claude the category comes from motion and moving-region size (hero / aura / broll / other).
+- Animal auto-detect = the species with the most HERO/AURA seconds; HERO/AURA shots of other
+  species are demoted to OTHER.
+- Exclusivity is per shot across edits (no HERO or AURA shot in two edits); inside one edit a
+  long HERO shot may supply several cuts (different moments) and is reused if the HERO/AURA pool
+  runs out before the drop, with a note. BROLL may repeat across edits; each edit opens on a
+  different BROLL shot and has its own hero moment (round-robin partition by score).
+- Measured analysis on the synthetic 9.5-minute 960x540 film (this Windows machine, 16 threads):
+  letterbox 2.4 s, proxy 39 s, shots 54 s, motion 113 s at 20 fps (now 12 fps for documentaries),
+  filters 18 s, classification with the fake client 3 s. That is ~0.3x to 0.4x of the film's
+  duration. Extrapolated for a 2-hour 1080p film: roughly 45 to 70 minutes before Claude calls,
+  plus ~125 classification calls (~20 min). Tim should measure on the Mac and update this number.

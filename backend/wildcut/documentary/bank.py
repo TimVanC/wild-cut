@@ -198,7 +198,7 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
         curve = MotionCurve.from_dict(json.loads(motion_json.read_text()))
     else:
         step(0.2, "motion scoring")
-        curve = compute_motion(proxy)
+        curve = compute_motion(proxy, sample_fps=12.0)   # shot-level stats only need ~12 fps
         motion_json.write_text(json.dumps(curve.to_dict()))
     timings["motion"] = round(time.time() - t0, 1)
 

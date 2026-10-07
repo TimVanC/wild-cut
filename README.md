@@ -28,7 +28,24 @@ cd frontend; npm install; cd ..
 .venv\Scripts\python tools\dev.py
 ```
 
-Docker alternative: `docker compose up` (ffmpeg bundled; see `docker-compose.yml`).
+Docker alternative: `docker compose up` (ffmpeg bundled; see `docker-compose.yml`). Set `MEDIA_DIR` to the
+folder with your footage so the containers can read it at `/media/...`.
+
+Claude key note: a user-scoped key (`sk-ant-usr-...`) only works with `ANTHROPIC_WORKSPACE_ID` set in `.env`.
+A workspace-scoped key (`sk-ant-api03-...`) needs no extra setting. Without a working key the app still
+runs (motion-only tags, placeholder title, offline Director commands) and the UI says so.
+
+## Modes and presets
+
+- **Music-synced** (phonk track as timing reference) or **visual peaks** (no music). Silent export by default;
+  the export dialog shows the sound offset to use on TikTok.
+- **Phonk** (default for everything), **Cinematic**, **Chase** (predator / prey / outcome, Escape variant),
+  **Showdown** (stat comparison cards with a reviewed, sourced stats sheet).
+- **Documentary mode**: "New from documentary", register a full-length film by path (or drop it in `inbox/`),
+  Analyze, review the shot bank (HERO / AURA / BROLL / OTHER, star or ban), Generate N edits. Each edit is a
+  normal project that opens in the editor and Director chat.
+- **Director chat** in the editor: "clip 2 first, title when it lets go of the branch, then clip 3". Anything you
+  specify is pinned and survives Regenerate.
 
 ## Layout
 
