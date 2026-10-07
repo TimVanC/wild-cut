@@ -149,7 +149,11 @@ def run_turn(s: Session, project: Project, message: str, progress=None) -> dict:
         reply_text = f"Stopped: {e}. Raise CLAUDE_BUDGET_PER_PROJECT_USD to continue."
     except Exception as e:  # noqa: BLE001
         log.exception("director turn failed")
-        reply_text = f"Something went wrong talking to Claude: {str(e)[:300]}"
+        if len(messages) == len(history):
+            # Claude never answered: do what the offline command set can, and say why
+            reply_text = _fallback(ctx, message) + f" (Claude error: {str(e)[:200]})"
+        else:
+            reply_text = f"Something went wrong talking to Claude: {str(e)[:300]}"
     # persist the assistant turns and tool results (without image payloads)
     for m in messages[len(history):]:
         if m["role"] == "assistant":
@@ -157,9 +161,13 @@ def run_turn(s: Session, project: Project, message: str, progress=None) -> dict:
             _save(s, project.id, "assistant", text, m["content"], ctx.versions[-1] if ctx.versions else None)
         else:
             _save(s, project.id, "tool", "", _strip_images(m["content"]), ctx.versions[-1] if ctx.versions else None)
-    # make sure the last stored assistant row carries the final reply text
     if not reply_text:
         reply_text = "Done: " + "; ".join(ctx.log) if ctx.log else "No changes made."
+    # make sure a visible assistant row carries the final reply text
+    last_assistant = next((m for m in reversed(messages[len(history):]) if m["role"] == "assistant"), None)
+    last_text = " ".join(b["text"] for b in last_assistant["content"] if b.get("type") == "text") if last_assistant else ""
+    if last_text.strip() != reply_text.strip():
+        _save(s, project.id, "assistant", reply_text, [{"type": "text", "text": reply_text}], ctx.versions[-1] if ctx.versions else None)
     return {"reply": reply_text, "edl_changed": ctx.changed, "versions": ctx.versions, "log": ctx.log}
 
 

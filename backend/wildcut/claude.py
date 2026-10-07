@@ -78,6 +78,9 @@ class ClaudeClient:
 
     @property
     def enabled(self) -> bool:
+        # user-scoped keys (sk-ant-usr-...) are rejected by the API unless a workspace id is sent
+        if self.api_key.startswith("sk-ant-usr") and not self.workspace_id:
+            return False
         return bool(self.api_key)
 
     def _sdk(self):

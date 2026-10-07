@@ -49,6 +49,8 @@ class Settings(BaseModel):
 
     @property
     def claude_enabled(self) -> bool:
+        if self.anthropic_api_key.startswith("sk-ant-usr") and not self.anthropic_workspace_id:
+            return False
         return bool(self.anthropic_api_key)
 
     @property

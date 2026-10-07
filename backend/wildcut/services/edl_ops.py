@@ -132,7 +132,7 @@ def remove_clip(edl: dict, item_id: str) -> str:
 
 
 def set_title(edl: dict, text: str | None = None, t: float | None = None, duration: float | None = None,
-              lock: bool = True, preset_id: str | None = None) -> str:
+              lock: bool = True, preset_id: str | None = None, anchor: dict | None = None) -> str:
     titles = [x for x in edl["text"] if x.get("kind") != "marker"]
     if not titles:
         preset = load_preset(preset_id or edl["style"])
@@ -147,6 +147,7 @@ def set_title(edl: dict, text: str | None = None, t: float | None = None, durati
         edl["title"] = text
     if t is not None:
         item["t"] = round(max(0.0, min(float(t), max(0.0, edl["duration"] - 0.1))), 4)
+        item["anchor"] = anchor
     if duration is not None:
         item["duration"] = round(max(0.1, float(duration)), 4)
     item["enabled"] = True

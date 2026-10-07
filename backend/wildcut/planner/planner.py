@@ -165,14 +165,31 @@ class Planner:
         self.used_moments.add(m.id)
         return entry
 
+    def anchored_hero(self, locked: list[dict]) -> dict | None:
+        """A locked title anchored inside a locked clip makes that clip the hero (peak = the anchor)."""
+        for t in self.existing.get("text", []):
+            a = t.get("anchor")
+            if t.get("locked") and a:
+                for c in locked:
+                    if c["id"] == a.get("item_id") or c.get("clip_id") == a.get("clip_id"):
+                        c = dict(c)
+                        c["peak_override"] = float(a.get("source_time", c.get("peak") or c["in"]))
+                        return c
+        return None
+
     def moment_for_existing(self, c: dict) -> Moment:
         m = next((m for m in self.req.moments if m.id == c.get("moment_id")), None)
+        if m is not None and c.get("peak_override") is not None:
+            m = Moment.from_dict(m.to_dict())
+            m.peak_t = float(c["peak_override"])
         if m is None:
             clip = self.clips_by_id.get(c["clip_id"])
             m = Moment(id=c.get("moment_id") or f"m_{c['id']}", clip_id=c["clip_id"], in_t=c["in"], out_t=c["out"],
                        peak_t=c.get("peak") if c.get("peak") is not None else (c["in"] + c["out"]) / 2,
                        motion_score=0.5, shot_start=0.0, shot_end=clip.duration if clip else c["out"],
                        species=c.get("species", ""), action=c.get("action", ""))
+            if c.get("peak_override") is not None:
+                m.peak_t = float(c["peak_override"])
         return m
 
     # ------------------------------------------------------------------ locks
@@ -225,7 +242,7 @@ class Planner:
             if self.req.mode == "music":
                 self.notes.append("No beat grid available; planned on visual peaks instead.")
             self.plan_visual()
-        self.edl["notes"] = self.notes
+        self.edl["notes"] = list(dict.fromkeys(self.notes))
         edlmod.relayout(self.edl)
         return self.edl
 
@@ -256,8 +273,9 @@ class Planner:
 
         # ---- hero
         locked = self.locked_clips()
-        hero_locked = next((c for c in locked if c.get("role") == "hero"), None)
+        hero_locked = self.anchored_hero(locked) or next((c for c in locked if c.get("role") == "hero"), None)
         if hero_locked is not None:
+            locked = [hero_locked if c["id"] == hero_locked["id"] else c for c in locked]
             hero_m = self.moment_for_existing(hero_locked)
         elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
                 len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):
@@ -622,8 +640,9 @@ class Planner:
         lead, tail = pacing.get("visual_lead", 1.0), pacing.get("visual_tail", 0.35)
         hlead, htail = pacing.get("visual_hero_lead", 1.2), pacing.get("visual_hero_tail", 1.0)
         locked = self.locked_clips()
-        hero_locked = next((c for c in locked if c.get("role") == "hero"), None)
+        hero_locked = self.anchored_hero(locked) or next((c for c in locked if c.get("role") == "hero"), None)
         if hero_locked is not None:
+            locked = [hero_locked if c["id"] == hero_locked["id"] else c for c in locked]
             hero_m = self.moment_for_existing(hero_locked)
         elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
                 len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):

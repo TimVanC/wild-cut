@@ -236,6 +236,10 @@ def t_set_order(ctx: Context, clips: list[Any], **_) -> dict:
         edlmod.relayout(ctx.edl)
         note += f"; removed {len(others)} unnamed clip(s)"
     ctx.commit(note)
+    # re-fit the locked order onto the beat grid (hero on the drop, title placed); locks are honored
+    row = plan_project(ctx.s, ctx.project, keep_locks=True, note="chat: refit order")
+    ctx.edl = row.json
+    ctx.versions.append(row.version)
     return {"ok": True, "note": note, "edit": summarize_edit(ctx)}
 
 
@@ -273,10 +277,17 @@ def t_set_clip_range(ctx: Context, clip: Any, source_start: float | None = None,
 
 
 def t_set_title(ctx: Context, text: str | None = None, time: Any = None, duration: float | None = None, **_) -> dict:
-    t = resolve_time(ctx, time) if time is not None else None
-    note = edl_ops.set_title(ctx.edl, text=text, t=t, duration=duration)
+    anchor = None
+    if isinstance(time, dict):
+        clip = resolve_clip(ctx, time.get("clip"))
+        t = resolve_time(ctx, time)   # also pulls the source time into the clip's range
+        item = edl_item_for_clip(ctx, clip)
+        anchor = {"item_id": item["id"], "clip_id": clip.id, "source_time": float(time.get("source_time", 0.0))} if item else None
+    else:
+        t = resolve_time(ctx, time) if time is not None else None
+    note = edl_ops.set_title(ctx.edl, text=text, t=t, duration=duration, anchor=anchor)
     ctx.commit(note)
-    return {"ok": True, "note": note}
+    return {"ok": True, "note": note, "title": next((x for x in ctx.edl["text"] if x.get("kind") != "marker"), None)}
 
 
 def t_add_effect(ctx: Context, type: str, time: Any, intensity: str | None = None, **_) -> dict:

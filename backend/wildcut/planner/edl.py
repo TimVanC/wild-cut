@@ -71,7 +71,24 @@ def relayout(edl: dict) -> dict:
         c["start"] = round(t, 4)
         t += c["tl_duration"]
     edl["duration"] = round(t, 4)
+    resolve_text_anchors(edl)
     return edl
+
+
+def resolve_text_anchors(edl: dict) -> None:
+    """Text anchored to a clip's source time follows that clip when the layout changes."""
+    from wildcut.planner.speed import timeline_between
+
+    for item in edl.get("text", []):
+        a = item.get("anchor")
+        if not a:
+            continue
+        c = next((c for c in edl["clips"] if c["id"] == a.get("item_id") or c.get("clip_id") == a.get("clip_id")), None)
+        if c is None or not c.get("enabled", True):
+            continue
+        st = float(a.get("source_time", c["in"]))
+        if c["in"] - 1e-6 <= st <= c["out"] + 1e-6:
+            item["t"] = round(c["start"] + timeline_between(c.get("speed"), c["in"], st), 4)
 
 
 def clip_at(edl: dict, t: float) -> dict | None:
