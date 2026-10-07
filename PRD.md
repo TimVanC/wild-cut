@@ -183,6 +183,52 @@ Same shape as Possession Cut: React frontend, FastAPI backend, and a separate wo
 
 Live preview in the editor uses the 540p preview render for accuracy (effects baked in). Re-render only affected segments when the EDL changes, so small edits preview in seconds.
 
+## Documentary mode
+
+Documentary mode takes a full-length nature documentary (often 45 min to 3 hours, multi-GB) about a specific animal, breaks it into a shot bank, picks the best footage, and auto-builds one or more complete 60 to 70 second Phonk edits. If there is enough strong footage, it makes multiple distinct edits from the same documentary.
+
+**Input**
+
+- Register the file by local path, or via the `inbox/` folder. Never upload multi-GB files through the browser.
+- Fields: animal name (or "auto-detect" the main animal), number of edits (1, 2, 3, or "as many as the footage supports"), target length (default 60 to 70 s), style (Phonk default), and optional song (music-synced mode) or none (visual-peaks mode).
+- Detect and crop letterboxing or pillarboxing before anything else.
+
+**Shot bank**
+
+- Shot-detect the entire film and dedupe near-identical shots with perceptual hashing (documentaries reuse footage).
+- Cheap filters first, before any Claude calls: drop black frames, very short shots (<0.5 s), shots with burned-in text, subtitles, lower thirds, title cards, credits, maps, logos, or watermarks (OCR plus edge-density checks), and shots with people, presenters, or crew.
+- Then use motion scoring and Claude vision (keyframes only, batched, within budget) to classify every surviving shot into:
+  - **HERO:** the target animal doing something (hunting, leaping, fighting, fleeing, swinging, diving).
+  - **AURA:** the target animal close-up or posing (stare, slow turn, silhouette, portrait).
+  - **BROLL:** landscape and habitat with no clear animal (aerials, sunrises, forests, rivers, weather, wide establishing shots).
+  - **OTHER:** other animals (usable as prey or context in Chase-style sequences).
+- Show the shot bank in the UI as a filterable grid by category, with hover previews, scores, and timestamps in the original film. Tim can star or ban shots before generating.
+
+**Edit structure for each 60 to 70 s Phonk edit**
+
+1. Intro (3 to 8 s): slow, moody BROLL establishing shots, then an AURA reveal of the animal.
+2. Build: short HERO and AURA cuts on the beat, tightening toward the drop.
+3. Drop: the single best HERO moment with a speed ramp landing on the drop, plus the "THE <ANIMAL>" serif title flash.
+4. Post-drop: the next-best HERO moments, cut on downbeats, with shake and flashes on bass hits.
+5. Outro (3 to 6 s): an AURA portrait or BROLL wide shot to close.
+
+Use BROLL only at the start and end (plus at most one short breather mid-edit) to reach the target length. Never pad the middle with filler. If there is not enough HERO footage for a full-length edit, make a shorter one and say why instead of padding with weak shots.
+
+**Multiple edits**
+
+- Estimate how many distinct edits the shot bank supports above a quality threshold, and show that number before generating.
+- Each edit gets its own hero moment for the drop, and no HERO or AURA shot appears in more than one edit. BROLL can repeat if needed.
+- Vary the edits (different hero moments, different opening shots) so they do not feel like the same video twice.
+- Each generated edit becomes a normal project that opens in the existing editor and Director chat ("swap the drop for the river crossing around 34:10").
+
+**Audio:** never use the documentary's audio (it is narration). Export silent or with Tim's phonk track, same as the rest of the app.
+
+**Performance:** build proxies once per documentary and cache all analysis, so generating more edits later does not reprocess the film. A 2-hour 1080p documentary should finish analysis in a reasonable time on Tim's Mac. Measure it and report the number in BUILD_NOTES.md.
+
+**Testing:** extend the synthetic asset generator with a long "documentary" (10+ minutes) that includes labeled segments: animal action, animal close-ups, landscape, text overlays, a presenter, letterboxing, and repeated shots. Verify classification accuracy, that filtered shots never appear in output, that no HERO shot repeats across edits, and that every edit lands within the target length with the hero moment on the drop.
+
+Finish by running one full synthetic documentary through the UI to produce at least 2 edits, then update BUILD_NOTES.md with what Tim should test first using a real documentary.
+
 ## Config, scope, and build plan
 
 **Keys** (in `.env`, with a committed `.env.example`): `ANTHROPIC_API_KEY` (required), `PEXELS_API_KEY` and `PIXABAY_API_KEY` (both free; stock search is disabled with a clear message if either is missing). Also `CLAUDE_MODEL` (default `claude-sonnet-5-5`), `CLAUDE_BUDGET_PER_PROJECT_USD` (default 1.50), `DATA_DIR`, `INBOX_DIR`, `EXPORTS_DIR`.
@@ -233,3 +279,5 @@ Live preview in the editor uses the 540p preview render for accuracy (effects ba
 Build the Chase and Showdown presets after step 7 (renderer) and before step 8, including the stats sheet review screen for Showdown.
 
 Build Director chat right after the editor screen in step 9, once the EDL, locking, and segment previews exist.
+
+Build Documentary mode (shot bank, filters, classification, multi-edit planner, shot bank screen) after step 10 and before the final self-review in step 11; it reuses the analysis, planner, renderer, editor, and Director chat.

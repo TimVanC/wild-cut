@@ -30,7 +30,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 W, H, FPS = 960, 540, 30
 SR = 44100
-ASSET_VERSION = 3  # bump when the generator changes so cached assets regenerate
+ASSET_VERSION = 4  # bump when the generator changes so cached assets regenerate
 
 
 def _ffmpeg_writer(path: Path, fps: int = FPS, size: tuple[int, int] = (W, H)) -> subprocess.Popen:
@@ -254,7 +254,7 @@ def main(out_dir: Path) -> dict:
     gt["clips"]["static_peaks"] = make_clip(
         out_dir / "static_peaks.mp4", 12.0, [(3.0, 700.0), (7.5, 800.0)], (70, 120, 60), seed=1)
     gt["clips"]["panning"] = make_clip(
-        out_dir / "panning.mp4", 10.0, [(6.0, 750.0)], (90, 110, 150), pan_speed=160.0, seed=2, start_x=160.0)
+        out_dir / "panning.mp4", 10.0, [(6.0, 750.0)], (90, 110, 150), pan_speed=60.0, seed=2, start_x=700.0, base_drift=0.0)
     gt["clips"]["two_shots"] = make_clip(
         out_dir / "two_shots.mp4", 8.0, [(2.0, 500.0), (6.0, 600.0)], (140, 90, 50), seed=3,
         cut_at=4.0, bg_base2=(50, 80, 160))

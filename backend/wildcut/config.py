@@ -22,6 +22,7 @@ def _path(env: str, default: str) -> Path:
 
 class Settings(BaseModel):
     anthropic_api_key: str = ""
+    anthropic_workspace_id: str = ""   # required by user-scoped keys (sk-ant-usr-...)
     pexels_api_key: str = ""
     pixabay_api_key: str = ""
     claude_model: str = "claude-sonnet-5-5"
@@ -63,6 +64,7 @@ class Settings(BaseModel):
 def get_settings() -> Settings:
     return Settings(
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID", ""),
         pexels_api_key=os.environ.get("PEXELS_API_KEY", ""),
         pixabay_api_key=os.environ.get("PIXABAY_API_KEY", ""),
         claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5-5"),
