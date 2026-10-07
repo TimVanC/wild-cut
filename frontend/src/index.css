@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --bg: #0c0c0e;
+  --panel: #141418;
+  --panel-2: #1b1b21;
+  --line: #2a2a32;
+  --text: #ececf1;
+  --muted: #8d8d99;
+  --accent: #f2b53a;
+  --accent-2: #ff5a3c;
+  --ok: #58c27d;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+* { box-sizing: border-box; }
+button { font: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
+
+.btn { @apply inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition disabled:opacity-40 disabled:cursor-not-allowed; border-color: var(--line); background: var(--panel-2); }
+.btn:hover:not(:disabled) { border-color: #3a3a46; background: #23232b; }
+.btn-primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: #ffc85a; border-color: #ffc85a; }
+.btn-danger { color: #ff8a73; }
+.btn-sm { @apply px-2 py-1 text-xs; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.input { @apply w-full rounded-md border px-2.5 py-1.5 text-sm outline-none; background: #0f0f13; border-color: var(--line); }
+.input:focus { border-color: #4a4a58; }
+.label { @apply block text-xs uppercase tracking-wider mb-1; color: var(--muted); }
+.muted { color: var(--muted); }
+.pill { @apply inline-block rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide; background: #23232b; color: var(--muted); }
+.pill-ok { background: #16321f; color: var(--ok); }
+.pill-warn { background: #3a2a10; color: var(--accent); }
+.pill-err { background: #3a1a16; color: #ff8a73; }
+.scroll { scrollbar-width: thin; scrollbar-color: #33333d transparent; }
+.tl-clip { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 1px solid #3b3b47; background: #22222c; }
+.tl-clip.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tl-clip.hero { background: #2a2320; }
+.tl-clip.card { background: #1f2630; }
+.tl-handle { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
+.tl-handle:hover { background: rgba(242,181,58,.35); }
+.tl-marker { position: absolute; top: 6px; width: 10px; height: 10px; margin-left: -5px; border-radius: 3px; cursor: pointer; transform: rotate(45deg); }
+.tl-marker.off { opacity: .3; }
+.tl-marker.selected { outline: 2px solid var(--accent); }
