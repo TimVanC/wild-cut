@@ -165,6 +165,16 @@ def plan_showdown(project_id: str, aspect: str, mode: str, seed: int, showdown: 
     if mode == "music" and grid and grid.beats:
         window = song_window or (existing or {}).get("audio", {}).get("song_window") or auto_window(grid, target_length or (n_ch * 1.8 + 8))
         ws, we = float(window["start"]), float(window["end"])
+        # keep the intro card to ~2 bars: if the drop sits far into the window, start the song later (unless Tim locked it)
+        locked_window = bool((existing or {}).get("audio", {}).get("window_locked")) or song_window is not None
+        if not locked_window and grid.chosen_drop is not None and ws < grid.chosen_drop < we:
+            bar = grid.beat_period() * 4
+            intro_guess = (grid.chosen_drop - ws) - n_ch * bar
+            if intro_guess > 2.5 * bar:
+                shift = intro_guess - 2 * bar
+                cands = [d for d in grid.downbeats if ws + shift - bar / 2 <= d <= ws + shift + bar / 2]
+                ws = cands[0] if cands else ws + shift
+                we = min(grid.duration, ws + (float(window["end"]) - float(window["start"])))
         drop = grid.chosen_drop if grid.chosen_drop is not None and ws < grid.chosen_drop < we else None
         downs = [round(d - ws, 4) for d in grid.downbeats_in(ws, we)]
         beats = [round(b - ws, 4) for b in grid.beats_in(ws, we)]

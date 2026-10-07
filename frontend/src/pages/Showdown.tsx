@@ -106,7 +106,7 @@ export default function Showdown() {
         </table>
         <div className="flex gap-2 mt-3">
           <button className="btn btn-sm" onClick={() => setRows(rs => [...rs, { animal: '', value: null, unit: unit || statCfg?.default_unit || '', source_url: '', fact: '', fact_source_url: '', confirmed: false, clip_id: null }])}>+ row</button>
-          <button className="btn btn-sm" disabled={saveRows.isPending} onClick={() => saveRows.mutate(rows)}>Save sheet</button>
+          <button className="btn btn-sm" disabled={saveRows.isPending} onClick={() => { saveMeta.mutate(); saveRows.mutate(rows) }}>Save sheet</button>
           <button className="btn btn-primary ml-auto" disabled={rows.length < 2 || build.isPending} onClick={() => build.mutate()}>Save and build the edit</button>
         </div>
         <div className="text-xs muted mt-2">Music-synced: each challenger enters on a downbeat and the winner lands on the drop. Visual mode: 1.6 s per challenger. Export writes stats.csv with every value and source.</div>

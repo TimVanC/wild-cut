@@ -179,6 +179,14 @@ filters / classification / two distinct edits.
   re-rendered), Director "clip 3 first, then clip 1, then clip 2" (exact order, song window
   moved so the drop hits the pinned hero, title on the drop), full 1080 export with the sound
   offset ("start it at 0:10") and caption.
+- Cinematic, music-synced, 1:1 (wizard switches the aspect automatically): 5 shots of 3 to 4 s,
+  only push-in and fade-to-black effects, the Cormorant title fading in over the hero shot, hero
+  on the drop.
+- Chase, music-synced, 3:4: alternating two-clip build (no species tags without Claude, noted),
+  the outcome on the drop with the speed ramp, motion-blur pass, hard cut to black and the emoji
+  marker, full Phonk effect set, 15 s.
+- Phonk, visual peaks, 9:16, no song: no beat grid, shake / flash / chromatic / zoom punch on each
+  clip's peak, the hero with the ramp and the title on its peak, 15 s.
 - Documentary: "New from documentary" with the synthetic 9.5-minute letterboxed film, Analyze
   (228 s on this machine: letterbox 3.5 s, proxy 47 s, shots 77 s, motion 77 s at 12 fps,
   filters 22.5 s; 78 shots, 67 kept, 3 black / 2 short / 4 text / 2 duplicate rejected), the
