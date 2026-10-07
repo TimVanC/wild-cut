@@ -547,6 +547,16 @@ class Planner:
             clip = self.clips_by_id[last["clip_id"]]
             last["out"] = round(min(clip.duration, last["out"] + (auto_end - cursor)), 4)
             last["tl_duration"] = round(last["out"] - last["in"], 4)
+        # a stubby trailing cut (< 1.5 s) reads as a mistake: fold it into the previous clip when the shot has room
+        if len(entries) >= 2 and entries[-1]["tl_duration"] < 1.5 and not entries[-1].get("locked_range"):
+            prev, stub = entries[-2], entries[-1]
+            m = next((m for m in self.req.moments if m.id == prev["moment_id"]), None)
+            room = (m.shot_end if m and m.shot_end > m.shot_start else self.clips_by_id[prev["clip_id"]].duration) - prev["out"]
+            if room >= stub["tl_duration"] - 1e-3:
+                prev["out"] = round(prev["out"] + stub["tl_duration"], 4)
+                prev["tl_duration"] = round(prev["out"] - prev["in"], 4)
+                self.used_moments.discard(stub["moment_id"])
+                entries.pop()
         return entries + post_locked
 
     # ------------------------------------------------------------------ effects and text
