@@ -1,87 +1,212 @@
 # Wild Cut build notes
 
-(Work in progress. Decisions are appended as they are made; the final summary is written at the end.)
+Built autonomously against `PRD.md` (v2, with the Documentary mode section added mid-build).
+Development machine: Windows 11, Python 3.12, Node 22, ffmpeg 9. Everything is cross-platform
+(`pathlib`, ffmpeg on PATH, `tools/dev.py` as the run script; the Makefile wraps it).
 
-## Decisions log
+## What was built
 
-- 2026-10-07: Development machine is Windows 11 (the PRD targets Tim's Mac). Everything is written
-  to be cross-platform: paths via `pathlib`, ffmpeg found on PATH, `tools/dev.py` instead of a
-  bash-only run script (the Makefile wraps it). No Windows-only dependencies.
-- Python 3.12 venv in `.venv`; backend is an installable package in `backend/` so tests import `wildcut`.
-- PRD v2 (received mid-build) supersedes v1: Phonk is the default treatment for every footage format,
-  the animal-name title is a serif ("THE GIBBON" style) in every preset, Anton/Bebas are reserved for
-  Showdown cards, and Chase gets the full Phonk treatment. The committed `PRD.md` is v2.
-- 2026-10-07: Documentary mode added to the PRD (new section before "Config, scope, and build plan")
-  at Tim's request mid-build. It is scheduled after step 10 (export) and before the final review,
-  because it reuses shots, motion, vision, the planner, the renderer, the editor, and Director chat.
-- Motion scoring samples at 20 fps instead of the PRD's 10 fps: at 10 fps Farneback flow saturated
-  on the fastest synthetic burst (950 px/s) and ranked it below a 500 px/s burst. At 20 fps the
-  ranking matches ground truth. Analysis runs on a 320 px wide proxy so the cost stays small.
-- Motion peaks within 0.2 s of an internal hard cut are discarded (flow across a cut is garbage).
-- Bass hits use a log-RMS derivative on the <150 Hz band (sample-accurate, 100% recall/precision
-  on the synthetic 808 pattern); spectral-flux onsets on the low band were unreliable. Beat times
-  from librosa are snapped onto those low-band onsets within 45 ms, which removes librosa's ~24 ms
-  spectrogram lag, and the grid is regularized (gaps filled, extrapolated to the file edges).
-- Song window: the drop sits at 60% of the window (DROP_POSITION) so there is a post-drop payoff
-  section, rather than the window ending "just after the drop". Tim can override on the waveform.
-- The Anthropic key Tim provided is a user-scoped key (`sk-ant-usr-...`). The API rejects every
-  request from it unless an `anthropic-workspace-id` header is sent, and the key cannot list
-  workspaces, so the build could not make live Claude calls. `ANTHROPIC_WORKSPACE_ID` is now read
-  from `.env` and sent as that header. All Claude-dependent code paths were tested with a fake
-  client, and every path degrades to heuristics (motion-only tags, species "animal", the
-  Director chat reports Claude unavailable) when calls fail. See "What to test first".
-- Preview re-rendering: the timeline is split into fixed 2 s chunks; each chunk is rendered
-  to its own MP4 named by a hash of everything that touches it (clips, effects, text, grade,
-  overlays, showdown data). After an edit only chunks whose hash changed re-render, and the
-  chunks are stitched with ffmpeg's concat demuxer (stream copy). A one-clip tweak on a 30 s
-  edit re-renders 1 to 2 chunks (a few seconds at 540p).
-- Undo/redo: EDL versions are append-only; the project keeps an `edl_cursor`. Undo moves the
-  cursor back, redo forward, and any new change saves a new version after the cursor (the
-  later versions stay in history but are no longer reachable by redo).
-- Manual timeline edits (swap, trim, reorder, text edit, effect toggle/intensity) lock the
-  item so Regenerate keeps it; the timeline shows a pin and the pin can be removed.
-- Inbox: files dropped in `inbox/` go to the library (reusable by any project, shown on the
-  Footage screen); files dropped in `inbox/<project id>/` import straight into that project
-  and queue analysis. Originals are never deleted; a `.wildcut_seen.json` tracks what was seen.
-- Showdown ties: a challenger with the same value as the champion loses (it must beat the
-  champion). The animals are ordered ascending so the record holder is revealed last.
-- "Original audio" export for visual-peaks mode concatenates each clip's own audio; a
-  speed-ramped clip uses its average rate through ffmpeg atempo (not a true variable-speed
-  audio warp).
-- Director chat runs as a worker job (the agent loop can take 10 to 40 s). Each tool call that
-  changes the edit saves an EDL version tagged "chat: ...", so "undo that" and the timeline's
-  undo button share the same history. Frames from look_at are sampled at 2 to 4 fps from the
-  540p proxy (max 12 frames per call) and are stripped before the turn is stored.
-- Without Claude the Director still handles "undo" and "clip 2 first, then clip 3" ordering
-  offline and tells Tim that Claude is not configured for anything else.
+**Pipeline (all stages write JSON to the project folder so any stage can rerun alone)**
+
+- Footage analysis: ffprobe + 540p proxies; PySceneDetect shots (<0.4 s merged); Farneback
+  optical flow at 20 fps on a 320 px proxy with the median flow (camera motion) subtracted, a
+  smoothed subject-motion curve, peak picking, and a moving-region box per sample; smoothed crop
+  paths per aspect (9:16, 1:1, 4:5, 3:4) clamped inside the frame; candidate moments (peak ±
+  lead/tail inside the shot, cut-adjacent peaks dropped); Claude vision tags for the top 40
+  moments per clip (species, action, intensity, framing, visibility, habitat, lighting, color,
+  outcome, documentary category) batched 4 moments × 4 frames per call; final score with idle /
+  hidden-subject penalties; a Claude-written clip description for chat labels.
+- Music analysis: librosa beats snapped to low-band (<150 Hz) onsets, downbeat phase by
+  low-band energy, 808/kick hits from a log-RMS derivative on the low band, drop candidates from
+  the biggest low-band energy jump after a quieter build confirmed by onset density (top 3, Tim
+  can override on the waveform), auto song window with the drop at 60% of the window.
+- Planner: beat-locked build slots tightening toward the drop (2 beats -> 1 beat -> half beats in
+  the last bar), the hero clip's `in` solved so its peak lands on the drop frame through its
+  speed ramp, post-drop cuts on downbeats, shakes on bass hits, flashes on the drop and every 2nd
+  hit, chromatic aberration with flashes, zoom punches on downbeats, glitch frames on the drop,
+  the animal's name as the only title. Visual-peaks mode: setup / escalation / payoff arc with
+  effects on each clip's peak. Locks: order, range, anchors, title (with clip-anchored times),
+  effects, song window; a fully pinned order is used verbatim and the song window moves so the
+  drop meets the pinned hero.
+- Renderer: deterministic (md5-identical renders); timeline -> source mapping through
+  piecewise-linear speed curves; crop path + headroom zoom + zoom punch / push-in + shake with
+  rotation in one affine resample (shake never shows edges); frame blending for slow-mo on
+  previews and ffmpeg minterpolate on full exports; .cube LUT grades (128-level table) plus
+  contrast / saturation / lift / gamma; grain, vignette, letterbox; serif titles from variable
+  fonts with letter-spacing and shadow (flash-in, fade, slam); silent / song-mixed / original
+  audio; segment renders; chunked previews (2 s chunks keyed by content hash, stitched by
+  stream copy) so small edits re-render in seconds.
+- Presets as JSON (`presets/*.json`, `extends` supported): Phonk, Cinematic, Chase (full Phonk
+  treatment, warm grade, predator/prey pairing, caught / escaped outcome), Showdown (stats
+  sheet, cards drawn from `presets/showdown_layouts/*.json`, ticking counters, stamps, winner
+  reveal on the drop, stats.csv, export blocked while a value is unsourced and unconfirmed).
+- Stock: Pexels and Pixabay adapters behind one interface (search / download / license_info),
+  Claude query expansion (plus Chase pairs), de-duplication, thumbnail pre-scoring, a local
+  library with credits and licenses. Nothing is downloaded from YouTube, TikTok, Instagram or
+  any non-API source.
+- App: FastAPI (projects, clips by path / upload / library / stock, song + window + drop,
+  analyze, moments, plan / regenerate, EDL get / put / op / undo / redo, frame, preview, export,
+  Showdown sheet, Director chat, documentary, jobs, SSE events, ranged media), a worker that
+  runs one job at a time and watches `inbox/`, React + TypeScript + Vite + Tailwind screens
+  (Projects, New project, Footage, Music with wavesurfer, Editor with timeline / inspector /
+  Director chat / export dialog, Showdown stats sheet, Documentary shot bank).
+- Director chat: a Messages API agent loop with 20 tools (`list_clips`, `get_moments`,
+  `look_at` frames at 2-4 fps, `set_order`, `insert_clip`, `remove_clip`, `set_clip_range`,
+  `set_title`, `add_effect`, `remove_effect`, `toggle_effect`, `set_intensity`, `set_speed_ramp`,
+  `set_style`, `set_song_window`, `plan_auto`, `render_preview`, `undo`, `set_lock`), a clip
+  reference resolver (numbers, labels, ids, descriptions), one EDL version per change, offline
+  fallback ("undo", "clip 2 first, then clip 3").
+- Documentary mode: see its own section below.
+- Export bundle: MP4 (H.264 yuv420p, AAC when audio), `credits.txt`, `caption.txt` with the
+  sound offset for silent music-synced exports, `stats.csv` for Showdown.
+
+**Tests** (`backend/tests`): synthetic ground truth for motion peaks (±0.2 s), pan rejection,
+hard cuts, subject-in-frame after reframing, beats / downbeats / bass hits / drop (±50 ms),
+planner drop alignment (±1 frame), cuts on beats, effects on hits, locks through Regenerate,
+determinism (md5 of two renders), title and flash frames, no black edges, segment renders,
+mixed audio, Chase pairing and variants, Showdown timing / gate / cards / csv, stock adapters
+with mocked HTTP, library, end-to-end API flows, Director acceptance scenario, documentary
+filters / classification / two distinct edits.
+
+## Decisions and assumptions (chronological)
+
+- PRD v2 supersedes v1: Phonk is the default treatment for every footage format, the title is a
+  serif "THE GIBBON" in every preset, Anton / Bebas Neue are only used on Showdown cards.
+- Documentary mode was added to the PRD mid-build (new section before "Config, scope, and build
+  plan") and scheduled after export, before the final review.
+- Motion scoring samples at 20 fps instead of 10: at 10 fps Farneback flow saturated on the
+  fastest synthetic burst and ranked it below a slower one; at 20 fps the ranking matches ground
+  truth. Analysis runs on a 320 px wide proxy so the cost stays small.
+- Motion peaks within 0.2 s of an internal hard cut are discarded.
+- Bass hits use a log-RMS derivative on the <150 Hz band (100% recall and precision on the
+  synthetic 808 pattern); spectral-flux onsets on the low band were unreliable. Beat times from
+  librosa are snapped to those onsets within 45 ms (removes ~24 ms spectrogram lag) and the grid
+  is regularized (gaps filled, extrapolated to the file edges).
+- Song window: the drop sits at 60% of the window so there is a post-drop payoff section rather
+  than the window ending just after the drop.
+- The Anthropic key Tim provided is user-scoped (`sk-ant-usr-...`): the API rejects every request
+  without an `anthropic-workspace-id` header and the key cannot list workspaces, so no live
+  Claude call succeeded during the build. `ANTHROPIC_WORKSPACE_ID` is read from `.env` and sent
+  as that header; until it is set the app reports Claude as disabled and uses heuristics
+  (motion-only tags, species "animal" and the placeholder title "THE ANIMAL", offline Director
+  commands). Every Claude path was tested with fake clients.
+- Preview re-rendering uses fixed 2 s chunks keyed by a content hash; only changed chunks
+  re-render and the chunks are stitched with ffmpeg's concat demuxer (stream copy).
+- Undo / redo: EDL versions are append-only with an `edl_cursor` on the project; a new change
+  after an undo saves a new version after the cursor.
+- Manual timeline edits (swap, trim, reorder, text edit, effect toggle / intensity) lock the item
+  so Regenerate keeps it; the timeline shows a pin that can be removed.
+- Inbox: files in `inbox/` go to the library; files in `inbox/<project id>/` import into that
+  project and queue analysis. Originals are never deleted; `.wildcut_seen.json` tracks them.
+- Showdown ties: a challenger with the same value as the champion loses. Animals are ordered
+  ascending so the record holder is revealed last. Without a source, a row blocks export until
+  Tim confirms or edits it.
+- "Original audio" export (visual mode) concatenates each clip's audio; a speed-ramped clip
+  uses its average rate through atempo, not a true variable-speed warp.
+- Director chat runs as a worker job. Each tool change saves an EDL version tagged "chat: ..."
+  so "undo that" and the timeline undo share one history. Titles placed at "{clip, source
+  time}" carry an anchor and follow the clip through re-trims and Regenerate; an anchored,
+  locked title makes its clip the hero so the drop lands on that moment. `set_order` re-fits the
+  pinned order onto the beat grid.
+- Full exports interpolate slow-mo with ffmpeg minterpolate (mci / obmc / bilat, capped at
+  60 fps); previews blend frames. On this machine a 5 s 1080x1920 export with one ramped hero
+  took 88 s, most of it minterpolate.
+- Planner notes are de-duplicated; the UI shows them under the player.
+- Chase without predator/prey species tags (no Claude) alternates the first two clips as
+  predator and prey and says so in a note.
+- Emoji outcome marker (☠️) renders with the system emoji font (Segoe UI Emoji on Windows, Apple
+  Color Emoji on Mac); if none is found the marker is skipped.
 
 ## Documentary mode decisions
 
-- Shots of a documentary are not extracted into files. A child edit project's clips point at
-  the original film with a `window_in` / `window_out` and share one cached 540p proxy, so
-  generating edits is instant and the final export reads the full-resolution source directly.
-  The letterbox crop is stored on each clip (`src_crop`) and applied by the renderer only when
-  it reads the uncropped source (the proxy is cropped when it is built).
-- Shot detection uses PySceneDetect's AdaptiveDetector (adaptive_threshold 3.0, min_content_val
-  10) instead of ContentDetector 27: on the synthetic film ContentDetector found 53% of the cuts
-  (same-palette shots barely move the HSV metric), AdaptiveDetector found 97% with no false cuts.
-- Cheap filters: black frames (mean luma < 14 on every keyframe), shots under 0.5 s, burned-in
-  text (rows of 8+ letter-sized, equal-height, evenly spaced high-contrast components; no OCR
-  dependency), and duplicates (dHash of the first and middle keyframes, Hamming <= 6 against
-  every kept shot). People/presenters and logos/watermarks are left to Claude's `has_people` /
-  `has_text` tags; the static-corner logo heuristic was removed because it also fired on
-  locked-off shots with textured corners.
-- Classification sends one keyframe per shot, 12 shots per call, highest motion first, capped
-  at 1500 shots, under a separate `CLAUDE_BUDGET_PER_DOCUMENTARY_USD` (default 6.0). Without
-  Claude the category comes from motion and moving-region size (hero / aura / broll / other).
+- Shots are not extracted into files: a child edit project's clips point at the original film
+  with `window_in` / `window_out` and share one cached 540p proxy, so generating edits is
+  instant and the final export reads the full-resolution source directly. The letterbox crop
+  is stored per clip (`src_crop`) and applied by the renderer only when it reads the uncropped
+  source (the proxy is already cropped).
+- Shot detection uses PySceneDetect's AdaptiveDetector (3.0 / min_content_val 10): on the
+  synthetic film ContentDetector 27 found 53% of the cuts, AdaptiveDetector 97% with no false
+  cuts.
+- Cheap filters before any Claude call: black frames, shots under 0.5 s, burned-in text (rows of
+  8+ letter-sized, equal-height, evenly spaced high-contrast components; no OCR dependency),
+  duplicates (dHash of the first and middle keyframes, Hamming <= 6 against every kept shot).
+  People / presenters and logos / watermarks are left to Claude's `has_people` / `has_text`
+  tags; a static-corner logo heuristic was removed because it also fired on locked-off shots.
+- Classification: one keyframe per shot, 12 shots per call, highest motion first, capped at
+  1500 shots, under `CLAUDE_BUDGET_PER_DOCUMENTARY_USD` (default 6.0). Without Claude the
+  category comes from motion and moving-region size.
 - Animal auto-detect = the species with the most HERO/AURA seconds; HERO/AURA shots of other
-  species are demoted to OTHER.
-- Exclusivity is per shot across edits (no HERO or AURA shot in two edits); inside one edit a
-  long HERO shot may supply several cuts (different moments) and is reused if the HERO/AURA pool
-  runs out before the drop, with a note. BROLL may repeat across edits; each edit opens on a
-  different BROLL shot and has its own hero moment (round-robin partition by score).
-- Measured analysis on the synthetic 9.5-minute 960x540 film (this Windows machine, 16 threads):
-  letterbox 2.4 s, proxy 39 s, shots 54 s, motion 113 s at 20 fps (now 12 fps for documentaries),
-  filters 18 s, classification with the fake client 3 s. That is ~0.3x to 0.4x of the film's
-  duration. Extrapolated for a 2-hour 1080p film: roughly 45 to 70 minutes before Claude calls,
-  plus ~125 classification calls (~20 min). Tim should measure on the Mac and update this number.
+  species become OTHER.
+- No HERO or AURA shot appears in two edits (round-robin partition by score, each edit gets its
+  own hero moment and opening BROLL shot). Inside one edit a long HERO shot may supply several
+  cuts and HERO/AURA moments are reused only if the pool runs out before the drop (noted).
+  BROLL is used only in the intro and outro.
+- If HERO footage cannot cover the target, the edit is shortened and the note says why.
+- Measured analysis on the synthetic 9.5-minute 960x540 film (Windows, 16 threads): letterbox
+  2.4 s, proxy 39 s, shots 54 s, motion 113 s at 20 fps (now 12 fps for documentaries, roughly
+  halving it), filters 18 s, classification with the fake client 3 s; about 0.3x to 0.4x of the
+  film's duration before Claude calls. Extrapolated for a 2-hour 1080p film: roughly 45 to 70
+  minutes before Claude plus ~125 classification calls. Tim should measure on the Mac and
+  replace this estimate.
+
+## Known gaps
+
+- No live Claude call was possible (workspace-scoped key needed), so vision tag quality, title
+  species, Showdown stats drafting, search expansion, thumbnail pre-scoring and the Director's
+  language understanding are untested against the real model. The fake clients exercise every
+  code path and schema.
+- No Pexels / Pixabay keys were available: the adapters are tested against mocked HTTP responses
+  shaped like the official API docs; the PRD's integration test ("search Pexels for cheetah
+  running, import 6 clips") needs real keys.
+- Logos / watermarks are only caught through Claude's `has_text` tag.
+- RIFE interpolation is not integrated (ffmpeg minterpolate or frame blending only).
+- The Chase outcome "blur pass" is a horizontal motion blur, not a grass-specific effect.
+- Original-audio export approximates ramped clips with atempo.
+- `make dev` is a thin wrapper over `tools/dev.py`; on Windows use the PowerShell lines in the
+  README.
+- Documentary classification of people and logos depends on Claude; the heuristic fallback keeps
+  presenter shots as OTHER only when they move little, so review the bank before generating
+  when Claude is not configured.
+- The frontend has no mobile layout (out of scope) and no automated UI tests; the UI flows were
+  driven manually in the built-in browser (see below).
+
+## What was verified through the real UI
+
+- Phonk, music-synced, 9:16: create project, add 4 synthetic clips by path, attach the synthetic
+  track on the Music tab (139.7 BPM, 71 beats, 43 bass hits, drop at 0:12 at 100%), Analyze ->
+  edit with beat-locked cuts, the hero on the drop with the ramp, effect markers, the serif
+  title, chunked preview; swap a moment from the inspector (pinned, preview chunks
+  re-rendered), Director "clip 3 first, then clip 1, then clip 2" (exact order, song window
+  moved so the drop hits the pinned hero, title on the drop), full 1080 export with the sound
+  offset ("start it at 0:10") and caption.
+- (The remaining presets and the documentary run are recorded below as they complete.)
+
+## What Tim should test first with real footage and a real phonk track
+
+1. Put a workspace-scoped Anthropic key in `.env` (or add `ANTHROPIC_WORKSPACE_ID` next to the
+   user-scoped key). Start `make dev`, open the Projects screen: the yellow Claude banner should
+   be gone.
+2. New project, Phonk, 9:16, 30 s, music-synced, silent. Footage tab: add 5 to 8 gibbon or
+   cheetah clips by path. Music tab: pick your phonk track; check that the DROP marker sits on
+   the real drop (click an "alt" candidate to override) and drag the window if you want a
+   different section. Footage tab: Analyze.
+3. In the editor, check: cuts land on beats (ticks under the clips), shakes/flashes sit on the
+   red bass-hit ticks, the hero clip's slow-mo peak lands on the DROP line, and the title is the
+   animal's name from Claude's species tag. Play the preview.
+4. Director chat: "clip 2 first, title when it lets go of the branch, then clip 3, then clip 1".
+   Expect the exact order, the title within 0.3 s of the moment, pins on those clips, and the
+   same choices after Regenerate.
+5. Export (1080, silent). Attach the same sound on TikTok and start it at the offset shown in the
+   dialog. Also try "Song mixed in" once and confirm the cuts sit on the beats of the mixed audio.
+6. Cinematic 1:1 on the gibbon footage: square frame, long shots, dark moody grade, the serif
+   title fading in over the hero shot, no shake.
+7. Chase: cheetah + gazelle clips, music-synced; confirm the predator/prey pairing, the outcome
+   on the drop, and force "escaped" from the project options if Claude's outcome tag is wrong.
+8. Showdown: top speed, "suggest", draft the sheet, fix any unsourced row (red), assign media,
+   build, export (check stats.csv).
+9. Documentary: "New from documentary", point at a 45+ minute film, Analyze (note the time
+   reported on the page and update the estimate above), review the shot bank (ban presenter or
+   map shots the filters missed), add your track on the Music tab, Generate 2 edits, open each
+   in the editor and try "swap the drop for the river crossing around 34:10" in the Director.
+10. Stock search with Pexels / Pixabay keys: "cheetah hunting" should return pre-scored results
+    with hover previews; import 6 and run the full flow.
