@@ -229,6 +229,27 @@ def _showdown_stats(s: Session, job: Job, progress) -> dict:
     return {"rows": len(rows)}
 
 
+@handler("documentary_analyze")
+def _doc_analyze(s: Session, job: Job, progress) -> dict:
+    from wildcut.documentary.service import analyze as doc_analyze
+
+    project = s.get(Project, job.project_id)
+    bank = doc_analyze(s, project, progress, force=bool(job.payload.get("force")))
+    return {"n_shots": bank["n_shots"], "n_kept": bank["n_kept"], "timings": bank["timings"], "animal": bank.get("animal")}
+
+
+@handler("documentary_generate")
+def _doc_generate(s: Session, job: Job, progress) -> dict:
+    from wildcut.documentary.service import generate
+
+    project = s.get(Project, job.project_id)
+    ids = generate(s, project, job.payload.get("count", "as_many"), progress)
+    project.status = "planned"
+    s.add(project)
+    s.commit()
+    return {"projects": ids}
+
+
 @handler("chat")
 def _chat(s: Session, job: Job, progress) -> dict:
     from wildcut.director.agent import run_turn

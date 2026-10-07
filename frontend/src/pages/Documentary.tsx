@@ -1,3 +1,114 @@
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useParams } from 'react-router-dom'
+import { api, fmtShort } from '../api'
+import { activeJob, useEvents } from '../hooks/useEvents'
+import FileBrowser from '../components/FileBrowser'
+
+type Shot = { index: number; start: number; end: number; duration: number; category: string; species: string; caption: string; score: number; max_motion: number; rejected: string; duplicate_of: number | null; thumb_url: string | null; starred: boolean; banned: boolean; used: boolean; classified_by: string }
+
+async function docGet(id: string) { const r = await fetch(`/api/projects/${id}/documentary`); if (!r.ok) throw new Error(await r.text()); return r.json() }
+async function post(url: string, body?: unknown) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail ?? r.statusText) } return r.json() }
+async function patch(url: string, body: unknown) { const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(await r.text()); return r.json() }
+
 export default function Documentary() {
-  return <div className="p-6 muted">Documentary mode is being built: shot bank, filters, classification and multi-edit generation land here.</div>
+  const { id } = useParams()
+  const pid = id!
+  const qc = useQueryClient()
+  const snap = useEvents(pid)
+  const project = useQuery({ queryKey: ['project', pid], queryFn: () => api.project(pid) })
+  const doc = useQuery({ queryKey: ['documentary', pid], queryFn: () => docGet(pid), refetchInterval: (q) => (q.state.data?.bank?.ready ? false : 4000) })
+  const opts = project.data?.options?.documentary ?? {}
+  const [path, setPath] = useState<string>(opts.path ?? '')
+  const [animal, setAnimal] = useState<string>(opts.animal ?? 'auto')
+  const [edits, setEdits] = useState<string>(opts.edits ?? 'as_many')
+  const [filter, setFilter] = useState<string>('hero')
+  const [browse, setBrowse] = useState(false)
+  const [err, setErr] = useState('')
+  const inv = () => { qc.invalidateQueries({ queryKey: ['documentary', pid] }); qc.invalidateQueries({ queryKey: ['project', pid] }) }
+  const register = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/register`, { path: path || opts.path, animal: animal || 'auto', edits }), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const analyze = useMutation({ mutationFn: async (force: boolean) => { if (!doc.data?.registered) await register.mutateAsync(); return post(`/api/projects/${pid}/documentary/analyze?force=${force}`) }, onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const flag = useMutation({ mutationFn: ({ index, body }: { index: number; body: { starred?: boolean; banned?: boolean } }) => patch(`/api/projects/${pid}/documentary/shots/${index}`, body), onSuccess: inv })
+  const generate = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/generate`, { count: edits }), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const job = activeJob(snap, ['documentary_analyze', 'documentary_generate'])
+  const bank = doc.data?.bank
+  const shots: Shot[] = useMemo(() => bank?.shots ?? [], [bank])
+  const visible = useMemo(() => shots.filter(s => filter === 'rejected' ? !!s.rejected : (!s.rejected && s.category === filter)).sort((a, b) => b.score - a.score), [shots, filter])
+  const est = bank?.estimate
+  const d = doc.data?.documentary
+  return (
+    <div className="h-full overflow-auto scroll p-5 flex flex-col gap-4">
+      <div className="card p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-3"><h2 className="font-medium">Documentary</h2>{d && <span className="muted text-xs truncate max-w-[560px]" title={d.path}>{d.path}</span>}{err && <span className="text-[#ff8a73] text-xs">{err}</span>}</div>
+        <div className="grid grid-cols-[1fr_200px_240px_auto] gap-3 items-end">
+          <div><label className="label">Film (local path, or a file name inside inbox/)</label><div className="flex gap-2"><input className="input" value={path} onChange={e => setPath(e.target.value)} placeholder="/Users/tim/Movies/cheetahs.mkv" /><button className="btn" onClick={() => setBrowse(true)}>Browse…</button></div></div>
+          <div><label className="label">Animal</label><input className="input" value={animal} onChange={e => setAnimal(e.target.value)} placeholder="auto-detect" /></div>
+          <div><label className="label">Edits</label><select className="input" value={edits} onChange={e => setEdits(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="as_many">as many as the footage supports</option></select></div>
+          <div className="flex gap-2">
+            <button className="btn" disabled={register.isPending || !path} onClick={() => register.mutate()}>Save</button>
+            <button className="btn btn-primary" disabled={!!job || analyze.isPending || !path} onClick={() => analyze.mutate(false)}>{job?.kind === 'documentary_analyze' ? 'Analyzing…' : bank?.ready ? 'Re-analyze' : 'Analyze film'}</button>
+          </div>
+        </div>
+        {job && <div><div className="h-2 rounded bg-[#23232b] overflow-hidden"><div className="h-full" style={{ width: `${Math.round(job.progress * 100)}%`, background: 'var(--accent)' }} /></div><div className="muted text-xs mt-1">{job.kind}: {Math.round(job.progress * 100)}% {job.message}</div></div>}
+        {project.data?.mode === 'music' && !project.data.song_path && <div className="text-xs" style={{ color: 'var(--accent)' }}>Music-synced: add your phonk track on the Music tab before generating (or switch the project to visual peaks).</div>}
+        <div className="text-xs muted">Multi-GB files are read in place by the worker; a 540p proxy and all analysis are cached per film, so generating more edits later never reprocesses it. Never uses the documentary's audio.</div>
+      </div>
+      {bank?.ready && (
+        <div className="card p-4 flex flex-wrap gap-x-6 gap-y-2 text-sm items-center">
+          <span><b>{bank.n_shots}</b> shots, <b>{bank.n_kept}</b> kept</span>
+          <span className="muted">rejected: {Object.entries(bank.rejected).filter(([, v]) => (v as number) > 0).map(([k, v]) => `${v} ${k}`).join(', ') || 'none'}</span>
+          <span>HERO {bank.categories.hero} · AURA {bank.categories.aura} · BROLL {bank.categories.broll} · OTHER {bank.categories.other}</span>
+          <span className="muted">animal: <b style={{ color: 'var(--text)' }}>{bank.animal || 'unknown'}</b>{bank.classified_by_claude ? ` · ${bank.classified_by_claude} shots classified by Claude` : ' · heuristic classification (Claude not configured)'}</span>
+          <span className="muted">analysis {d?.analysis_seconds ? `${Math.round(d.analysis_seconds)}s` : ''} ({Object.entries(bank.timings).map(([k, v]) => `${k} ${v}s`).join(', ')})</span>
+          <span className="ml-auto pill pill-warn">supports {est?.supported ?? 0} more edit{est?.supported === 1 ? '' : 's'} · {est?.hero_seconds}s of HERO in {est?.hero_shots} shots</span>
+          <button className="btn btn-primary" disabled={!!job || !est?.supported && edits !== '1'} onClick={() => generate.mutate()}>Generate {edits === 'as_many' ? `${est?.supported ?? 0}` : edits} edit{edits === '1' ? '' : 's'}</button>
+        </div>
+      )}
+      {doc.data?.edits?.length > 0 && (
+        <div className="card p-4">
+          <div className="font-medium mb-2">Generated edits</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {doc.data.edits.map((e: any) => (
+              <Link key={e.id} to={`/p/${e.id}/editor`} className="card p-3 hover:border-[var(--accent)]">
+                <div className="font-medium truncate">{e.name}</div>
+                <div className="text-xs muted">{e.clip_count} clips · {e.status}{e.last_export ? ' · exported' : ''}</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--accent)' }}>open in the editor / Director →</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      {bank?.ready && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            {(['hero', 'aura', 'broll', 'other', 'rejected'] as const).map(c => <button key={c} className={`btn btn-sm ${filter === c ? 'border-[var(--accent)]' : ''}`} onClick={() => setFilter(c)}>{c.toUpperCase()} <span className="muted">{c === 'rejected' ? shots.filter(s => s.rejected).length : bank.categories[c]}</span></button>)}
+            <span className="muted text-xs ml-2">hover to preview · ★ star to prefer · ban to exclude · greyed = already used in an edit</span>
+          </div>
+          <div className="grid grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
+            {visible.map(s => <ShotCard key={s.index} s={s} proxy={bank.proxy_url} onStar={() => flag.mutate({ index: s.index, body: { starred: !s.starred } })} onBan={() => flag.mutate({ index: s.index, body: { banned: !s.banned } })} />)}
+          </div>
+        </div>
+      )}
+      {browse && <FileBrowser kinds={['video']} onClose={() => setBrowse(false)} onPick={(p) => { setPath(p); setBrowse(false) }} />}
+    </div>
+  )
+}
+
+function ShotCard({ s, proxy, onStar, onBan }: { s: Shot; proxy: string; onStar: () => void; onBan: () => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div className={`card overflow-hidden ${s.banned ? 'opacity-40' : s.used ? 'opacity-60' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <div className="aspect-video bg-black relative">
+        {hover && !s.rejected ? <video src={`${proxy}#t=${s.start.toFixed(2)},${s.end.toFixed(2)}`} autoPlay muted loop playsInline className="w-full h-full object-cover" /> : s.thumb_url ? <img src={s.thumb_url} className="w-full h-full object-cover" alt="" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center muted text-xs">{s.rejected}</div>}
+        <span className="absolute top-1 left-1 pill" style={{ background: 'rgba(0,0,0,.65)' }}>{fmtShort(s.start)}–{fmtShort(s.end)}</span>
+        {!s.rejected && <span className="absolute top-1 right-1 pill" style={{ background: 'rgba(0,0,0,.65)' }}>{s.score.toFixed(2)}</span>}
+        {s.used && <span className="absolute bottom-1 left-1 pill pill-ok">used</span>}
+        {s.starred && <span className="absolute bottom-1 right-1 pill pill-warn">★</span>}
+      </div>
+      <div className="p-1.5 text-[11px] flex items-center gap-1">
+        <span className="truncate flex-1" title={s.caption}>{s.rejected ? `rejected: ${s.rejected}${s.duplicate_of != null ? ` of #${s.duplicate_of}` : ''}` : (s.caption || `${s.category} · motion ${s.max_motion.toFixed(2)}`)}</span>
+        {!s.rejected && <><button className="btn btn-sm" onClick={onStar} title="prefer this shot">★</button><button className="btn btn-sm btn-danger" onClick={onBan} title={s.banned ? 'unban' : 'exclude from edits'}>{s.banned ? 'unban' : 'ban'}</button></>}
+      </div>
+    </div>
+  )
 }

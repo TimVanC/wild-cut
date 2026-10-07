@@ -38,6 +38,7 @@ class ClipInfo:
     width: int
     height: int
     species: str = ""
+    src_crop: list | None = None
 
     @property
     def aspect(self) -> float:
@@ -98,6 +99,14 @@ class Planner:
         if m.subject_visible is False:
             s -= 0.2
         return s
+
+    def is_fully_locked(self, locked: list[dict]) -> bool:
+        """Tim pinned the whole order (intro/outro sections added by a preset do not count)."""
+        core = [c for c in locked if c.get("role") not in ("intro", "outro")]
+        if not core or not all(c.get("locked_order") for c in core):
+            return False
+        existing = [c for c in self.existing.get("clips", []) if c.get("enabled", True) and c.get("role") not in ("intro", "outro")]
+        return len(core) == len(existing)
 
     def choose_hero(self) -> Moment | None:
         """The moment that lands on the drop (or the visual payoff). Presets may override."""
@@ -161,6 +170,8 @@ class Planner:
             "peak": round(min(max(m.peak_t, in_t), out_t), 4), "enabled": True,
             "species": m.species, "action": m.action, "caption_hint": m.caption_hint,
         }
+        if clip.src_crop:
+            entry["src_crop"] = list(clip.src_crop)
         entry.update(extra)
         self.used_moments.add(m.id)
         return entry
@@ -277,17 +288,16 @@ class Planner:
         if hero_locked is not None:
             locked = [hero_locked if c["id"] == hero_locked["id"] else c for c in locked]
             hero_m = self.moment_for_existing(hero_locked)
-        elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
-                len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):
+        elif self.is_fully_locked(locked):
             # fully locked order: the hero is the best moment among the locked clips
-            hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
+            hero_locked = max([c for c in locked if c.get("role") not in ("intro", "outro")], key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
             hero_m = self.choose_hero()
         if hero_m is None:
             self.plan_visual()
             return
-        fully_locked = bool(locked) and self.existing.get("clips") and             len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)])
+        fully_locked = self.is_fully_locked(locked)
 
         # ---- sequence: locked clips keep order; the hero sits at its locked index or after the pre-hero locks
         before, after = [], []
@@ -644,9 +654,8 @@ class Planner:
         if hero_locked is not None:
             locked = [hero_locked if c["id"] == hero_locked["id"] else c for c in locked]
             hero_m = self.moment_for_existing(hero_locked)
-        elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
-                len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):
-            hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
+        elif self.is_fully_locked(locked):
+            hero_locked = max([c for c in locked if c.get("role") not in ("intro", "outro")], key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
             hero_m = self.choose_hero()
@@ -692,7 +701,7 @@ class Planner:
         else:
             before = [visual_entry(c) for c in locked if c.get("anchor") != "end"]
             after = [visual_entry(c) for c in locked if c.get("anchor") == "end"]
-        fully_locked = bool(locked) and len(locked) == len([c for c in self.existing.get("clips", []) if c.get("enabled", True)])
+        fully_locked = self.is_fully_locked(locked)
 
         # auto picks until the target length is reached
         auto: list[dict] = []

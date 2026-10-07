@@ -60,7 +60,7 @@ def load_grid(s: Session, project_id: str) -> BeatGridData | None:
 
 def clip_infos(clips: list[Clip]) -> list[ClipInfo]:
     return [ClipInfo(id=c.id, label=c.label, path=c.path, proxy=c.proxy_path or c.path, duration=c.duration, width=c.width,
-                     height=c.height, species=(c.tags or {}).get("species", "")) for c in clips]
+                     height=c.height, species=(c.tags or {}).get("species", ""), src_crop=c.src_crop) for c in clips]
 
 
 def build_request(s: Session, project: Project, seed: int | None = None, existing: dict | None = None) -> PlanRequest:
@@ -92,6 +92,10 @@ def plan_project(s: Session, project: Project, seed: int | None = None, keep_loc
     preset = load_preset(project.style)
     if preset.get("structure") == "showdown":
         edl = plan_showdown_project(s, project, seed, existing)
+    elif (project.options or {}).get("documentary_edit"):
+        from wildcut.documentary.planner import plan_documentary
+
+        edl = plan_documentary(build_request(s, project, seed, existing))
     else:
         req = build_request(s, project, seed, existing)
         edl = plan_for_preset(req)

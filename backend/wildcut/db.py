@@ -62,7 +62,36 @@ class Clip(SQLModel, table=True):
     description: str = ""
     analyzed: bool = False
     order: int = 0
+    window_in: float | None = None      # documentary shots: this clip is a time window of a larger file
+    window_out: float | None = None
+    src_crop: list | None = Field(default=None, sa_column=Column(JSON))   # [x, y, w, h] letterbox crop of the source
     created_at: datetime = Field(default_factory=now)
+
+
+class Documentary(SQLModel, table=True):
+    id: str = Field(default_factory=new_id, primary_key=True)
+    project_id: str = Field(index=True)
+    path: str
+    proxy_path: str | None = None
+    crop: dict | None = Field(default=None, sa_column=Column(JSON))
+    duration: float = 0.0
+    fps: float = 0.0
+    width: int = 0
+    height: int = 0
+    animal: str = "auto"
+    animal_detected: str = ""
+    edits_requested: str = "as_many"
+    status: str = "registered"           # registered | analyzing | ready | error
+    analysis_seconds: float | None = None
+    timings: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    shots_count: int = 0
+    kept_count: int = 0
+    estimate: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    starred: list = Field(default_factory=list, sa_column=Column(JSON))
+    banned: list = Field(default_factory=list, sa_column=Column(JSON))
+    edit_project_ids: list = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
 
 
 class Moment(SQLModel, table=True):
@@ -184,7 +213,28 @@ def get_engine(path: Path | None = None) -> Engine:
             cur.close()
 
         SQLModel.metadata.create_all(_engine)
+        _ensure_columns(_engine)
     return _engine
+
+
+# columns added after the first release; SQLite create_all does not alter existing tables
+_ADDED_COLUMNS = {
+    "clip": {"window_in": "FLOAT", "window_out": "FLOAT", "src_crop": "JSON"},
+    "moment": {"category": "VARCHAR DEFAULT ''", "starred": "BOOLEAN DEFAULT 0", "banned": "BOOLEAN DEFAULT 0"},
+}
+
+
+def _ensure_columns(engine: Engine) -> None:
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        for table, cols in _ADDED_COLUMNS.items():
+            existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if not existing:
+                continue
+            for col, ddl in cols.items():
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
 
 
 def reset_engine_for_tests(path: Path) -> Engine:

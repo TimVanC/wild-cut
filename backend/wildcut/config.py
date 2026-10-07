@@ -27,6 +27,7 @@ class Settings(BaseModel):
     pixabay_api_key: str = ""
     claude_model: str = "claude-sonnet-5-5"
     claude_budget_per_project_usd: float = 1.50
+    claude_budget_per_documentary_usd: float = 6.0
     data_dir: Path = REPO_ROOT / "data"
     inbox_dir: Path = REPO_ROOT / "inbox"
     exports_dir: Path = REPO_ROOT / "exports"
@@ -71,6 +72,7 @@ def get_settings() -> Settings:
         pixabay_api_key=os.environ.get("PIXABAY_API_KEY", ""),
         claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5-5"),
         claude_budget_per_project_usd=float(os.environ.get("CLAUDE_BUDGET_PER_PROJECT_USD", "1.50")),
+        claude_budget_per_documentary_usd=float(os.environ.get("CLAUDE_BUDGET_PER_DOCUMENTARY_USD", "6.0")),
         data_dir=_path("DATA_DIR", "./data"),
         inbox_dir=_path("INBOX_DIR", "./inbox"),
         exports_dir=_path("EXPORTS_DIR", "./exports"),

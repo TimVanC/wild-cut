@@ -104,7 +104,7 @@ def prepare_smooth(src: str | Path, in_t: float, out_t: float, dst: str | Path, 
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-ss", f"{max(0.0, in_t - 0.1):.3f}", "-to", f"{out_t + 0.1:.3f}", "-i", str(src),
-        "-vf", f"minterpolate=fps={target_fps:.3f}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:scd=none",
+        "-vf", f"minterpolate=fps={min(60.0, target_fps):.3f}:mi_mode=mci:mc_mode=obmc:me_mode=bilat:me=epzs:scd=none",
         "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(dst),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)

@@ -67,7 +67,7 @@ def swap_moment(edl: dict, item_id: str, m: Moment, clip: ClipInfo) -> str:
     c.update({"clip_id": m.clip_id, "moment_id": m.id, "label": clip.label, "src": clip.path, "proxy": clip.proxy,
               "in": round(in_t, 4), "out": round(out_t, 4), "speed": speed, "crop_path": _crop(m, edl["aspect"], clip, in_t, out_t),
               "peak": round(min(max(m.peak_t, in_t), out_t), 4), "species": m.species, "action": m.action,
-              "caption_hint": m.caption_hint, "locked_order": True, "locked_range": True})
+              "caption_hint": m.caption_hint, "locked_order": True, "locked_range": True, "src_crop": list(clip.src_crop) if clip.src_crop else None})
     edlmod.relayout(edl)
     return f"Swapped {c['label']} to {m.caption_hint or m.action or 'another moment'} at {m.peak_t:.1f}s"
 
@@ -116,6 +116,8 @@ def insert_clip(edl: dict, m: Moment, clip: ClipInfo, position: int | None, dura
              "crop_path": _crop(m, edl["aspect"], clip, in_t, out_t), "role": role, "locked_order": lock, "locked_range": lock,
              "anchor": None, "peak": round(min(max(m.peak_t, in_t), out_t), 4), "enabled": True, "species": m.species,
              "action": m.action, "caption_hint": m.caption_hint}
+    if clip.src_crop:
+        entry["src_crop"] = list(clip.src_crop)
     if position is None or position >= len(edl["clips"]):
         edl["clips"].append(entry)
     else:

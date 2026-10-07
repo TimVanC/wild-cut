@@ -894,3 +894,7 @@ def browse(path: str | None = None) -> dict:
     except PermissionError as e:
         raise HTTPException(403, str(e)) from e
     return {"path": str(base), "parent": str(base.parent) if base.parent != base else None, "dirs": dirs, "files": files}
+
+
+# documentary routes live in their own module
+from wildcut.api import documentary as _documentary_routes  # noqa: E402,F401

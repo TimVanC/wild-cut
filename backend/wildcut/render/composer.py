@@ -93,6 +93,8 @@ class ClipRenderer:
         path = clip["proxy"] if (settings.use_proxy and clip.get("proxy")) else clip["src"]
         if not Path(path).exists():
             path = clip["src"]
+        # documentary sources are letterboxed: the proxy is already cropped, the source is not
+        self.src_crop = clip.get("src_crop") if path == clip["src"] and clip.get("src_crop") else None
         self.speed = clip.get("speed")
         min_rate = min((k["rate"] for k in self.speed), default=1.0) if self.speed else 1.0
         offset = 0.0
@@ -114,6 +116,9 @@ class ClipRenderer:
         s = source_at(self.speed, c["in"], c["out"], t - c["start"])
         rate = _rate_at(self.speed, s) if self.speed else 1.0
         src = self.source.frame_at(s, rate)
+        if self.src_crop:
+            x, y, w, h = [int(v) for v in self.src_crop]
+            src = src[y:y + h, x:x + w]
         if src.shape[1] != self.src_w or src.shape[0] != self.src_h:
             self.src_w, self.src_h = src.shape[1], src.shape[0]
         # crop window in source pixels
@@ -195,6 +200,8 @@ def render_video(edl: dict, out_path: str | Path, settings: RenderSettings | Non
                 if clip["id"] != current_id:
                     if current_id in renderers:
                         renderers.pop(current_id).close()
+                    if progress and clip.get("speed") and settings.smooth_slowmo:
+                        progress((k - first) / max(1, last - first))
                     renderers[clip["id"]] = ClipRenderer(clip, settings, out_w, out_h, headroom, tmp)
                     current_id = clip["id"]
                 frame = renderers[clip["id"]].frame(t, k, geom)

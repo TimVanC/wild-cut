@@ -52,3 +52,21 @@ def detect_shots(path: str | Path, duration: float | None = None, threshold: flo
     elif duration is not None and shots[-1].end < duration - 0.05:
         shots[-1] = Shot(shots[-1].start, duration)
     return merge_short_shots(shots)
+
+
+def detect_shots_adaptive(path: str | Path, duration: float | None = None, adaptive_threshold: float = 3.0,
+                          min_content_val: float = 10.0) -> list[Shot]:
+    """Adaptive detector: catches subtle cuts between similar-looking shots (documentary mode)."""
+    from scenedetect import AdaptiveDetector, detect
+
+    scenes = detect(str(path), AdaptiveDetector(adaptive_threshold=adaptive_threshold, min_content_val=min_content_val,
+                                                 min_scene_len=int(0.3 * 30)))
+    shots = [Shot(float(a.get_seconds()), float(b.get_seconds())) for a, b in scenes]
+    if not shots:
+        from wildcut.media import probe
+
+        d = duration if duration is not None else probe(path).duration
+        shots = [Shot(0.0, d)]
+    elif duration is not None and shots[-1].end < duration - 0.05:
+        shots[-1] = Shot(shots[-1].start, duration)
+    return merge_short_shots(shots, min_len=0.25)
