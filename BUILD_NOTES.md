@@ -187,6 +187,12 @@ filters / classification / two distinct edits.
   marker, full Phonk effect set, 15 s.
 - Phonk, visual peaks, 9:16, no song: no beat grid, shake / flash / chromatic / zoom punch on each
   clip's peak, the hero with the ramp and the title on its peak, 15 s.
+- Showdown, music-synced, 9:16: wizard -> stats sheet (top speed, km/h; lion / cheetah / peregrine
+  falcon; the offline draft creates empty rows), values, sources, facts and media per row, the
+  lion left unsourced -> red row and "export blocked: lion", confirmed it -> "sheet ok", winner
+  clip chosen, "Save and build" -> intro card, two versus cards on downbeats, winner card on the
+  drop, winner clip; export through the dialog -> 540 wide MP4 (18.9 s, h264) with credits,
+  caption and `stats.csv` listing every value, source and confirmation.
 - Documentary: "New from documentary" with the synthetic 9.5-minute letterboxed film, Analyze
   (228 s on this machine: letterbox 3.5 s, proxy 47 s, shots 77 s, motion 77 s at 12 fps,
   filters 22.5 s; 78 shots, 67 kept, 3 black / 2 short / 4 text / 2 duplicate rejected), the
