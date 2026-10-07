@@ -83,9 +83,12 @@ class Moment(SQLModel, table=True):
     lighting: str = ""
     dominant_color: str = ""
     outcome: str = ""
+    category: str = ""                  # hero | aura | broll | other (documentary mode)
     kind: str = "peak"
     crop_paths: dict = Field(default_factory=dict, sa_column=Column(JSON))
     score: float = 0.0
+    starred: bool = False
+    banned: bool = False
 
 
 class BeatGrid(SQLModel, table=True):
