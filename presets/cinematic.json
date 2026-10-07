@@ -1,0 +1,75 @@
+{
+  "id": "cinematic",
+  "name": "Cinematic",
+  "description": "Calm and premium: square frame, long shots, dark moody grade, vignette, serif title fading in over the hero shot.",
+  "default_aspect": "1:1",
+  "default_intensity": "low",
+  "pacing": {
+    "cut_mode": "bars",
+    "shot_min": 3.0,
+    "shot_max": 8.0,
+    "shot_bars": 2,
+    "peak_position_in_cut": 0.6,
+    "visual_lead": 2.5,
+    "visual_tail": 1.5,
+    "visual_hero_lead": 2.5,
+    "visual_hero_tail": 2.0
+  },
+  "speed_ramp": {
+    "hero": true,
+    "slow_rate": 0.7,
+    "pre_ramp": 0.6,
+    "ease": 0.4,
+    "hold_after": 0.6,
+    "hero_pre": 2.2,
+    "hero_post": 2.2
+  },
+  "effects": {
+    "shake": null,
+    "flash": null,
+    "chromatic": null,
+    "zoom_punch": null,
+    "push_in": {
+      "on": "every_clip",
+      "scale": {"low": 1.04, "med": 1.06, "high": 1.08}
+    },
+    "fade_black": {
+      "on": "section_boundary",
+      "duration": 0.5
+    },
+    "visual_peak": []
+  },
+  "overlays": {
+    "grain": 0.05,
+    "vignette": 0.45,
+    "letterbox": false,
+    "chromatic_static": 0.0
+  },
+  "grade": {
+    "lut": "cinematic.cube",
+    "lut_strength": 1.0,
+    "contrast": 1.06,
+    "saturation": 0.82,
+    "lift": -0.02,
+    "gamma": 1.0
+  },
+  "text": {
+    "font": "CormorantGaramond-SemiBold.ttf",
+    "size_frac": 0.085,
+    "letter_spacing": 0.22,
+    "color": "#F2EFE9",
+    "stroke_px": 0,
+    "shadow": 0.35,
+    "animation": "fade",
+    "fade": 1.0,
+    "hold": 2.2,
+    "shake": false,
+    "position": [0.5, 0.5],
+    "flash_with_title": false
+  },
+  "transitions": {
+    "between_sections": "fade_black",
+    "fade_in": 0.8,
+    "fade_out": 1.0
+  }
+}

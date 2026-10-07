@@ -1,0 +1,47 @@
+{
+  "id": "chase",
+  "name": "Chase",
+  "description": "Predator, prey, outcome in three beats with the full Phonk treatment and a warm golden grade. Escape variant when the prey gets away.",
+  "default_aspect": "3:4",
+  "default_intensity": "med",
+  "extends": "phonk",
+  "structure": "chase",
+  "chase": {
+    "length_min": 10,
+    "length_max": 20,
+    "outcome": "auto",
+    "outcome_marker": "☠️",
+    "outcome_style": "blur_pass",
+    "pairs": [
+      ["cheetah", "gazelle"], ["lion", "zebra"], ["wolf", "elk"], ["orca", "seal"],
+      ["eagle", "fish"], ["falcon", "pigeon"], ["leopard", "impala"], ["crocodile", "wildebeest"],
+      ["shark", "seal"], ["hawk", "rabbit"], ["fox", "hare"], ["tiger", "deer"]
+    ]
+  },
+  "pacing": {
+    "build_cut_beats_start": 2,
+    "build_cut_beats_end": 1,
+    "final_bar_cut_beats": 1,
+    "post_cut_beats": 2,
+    "post_cut_beats_min": 2,
+    "peak_position_in_cut": 0.7,
+    "visual_lead": 1.2,
+    "visual_tail": 0.4,
+    "visual_hero_lead": 1.2,
+    "visual_hero_tail": 1.0
+  },
+  "overlays": {
+    "grain": 0.06,
+    "vignette": 0.3,
+    "letterbox": false,
+    "motion_blur": 0.35
+  },
+  "grade": {
+    "lut": "chase.cube",
+    "lut_strength": 1.0,
+    "contrast": 1.08,
+    "saturation": 1.05,
+    "lift": -0.02,
+    "gamma": 0.98
+  }
+}
