@@ -99,6 +99,10 @@ class Planner:
             s -= 0.2
         return s
 
+    def raw_rank(self, m: Moment) -> float:
+        """Deterministic rank (no seed jitter) used when choosing the hero among locked clips."""
+        return m.score + (0.5 if m.id in self.starred else 0.0) - (0.2 if m.subject_visible is False else 0.0)
+
     def best_unused(self, prev_clip: str | None = None, prev_species: str | None = None,
                     min_len: float = 0.0, exclude_clip_ids: set[str] | None = None,
                     prefer_category: str | None = None) -> Moment | None:
@@ -254,7 +258,7 @@ class Planner:
         elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
                 len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):
             # fully locked order: the hero is the best moment among the locked clips
-            hero_locked = max(locked, key=lambda c: self.adjusted(self.moment_for_existing(c)))
+            hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
             hero_m = self.best_unused(min_len=0.8)
@@ -619,7 +623,7 @@ class Planner:
             hero_m = self.moment_for_existing(hero_locked)
         elif locked and all(c.get("locked_order") for c in locked) and self.existing.get("clips") and \
                 len(locked) == len([c for c in self.existing["clips"] if c.get("enabled", True)]):
-            hero_locked = max(locked, key=lambda c: self.adjusted(self.moment_for_existing(c)))
+            hero_locked = max(locked, key=lambda c: self.raw_rank(self.moment_for_existing(c)))
             hero_m = self.moment_for_existing(hero_locked)
         else:
             hero_m = self.best_unused(min_len=0.8)
