@@ -47,6 +47,25 @@ export type Config = {
 
 export class ApiError extends Error { status: number; constructor(status: number, msg: string) { super(msg); this.status = status } }
 
+// On Vercel (or any static host) VITE_API_BASE points at the Railway backend; locally it is empty
+// and Vite proxies /api to the local API.
+// Without the env var, a static host that is not localhost (e.g. wild-cut.vercel.app) talks to the Railway backend.
+const DEFAULT_REMOTE_API = 'https://wild-cut-production.up.railway.app'
+const envBase = ((import.meta as any).env?.VITE_API_BASE ?? '').replace(/\/$/, '')
+const isLocalHost = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
+export const API_BASE: string = envBase || (isLocalHost || typeof location === 'undefined' || location.hostname.endsWith('.railway.app') ? '' : DEFAULT_REMOTE_API)
+
+/** Absolute URL for an API-relative path, with the access token as a query param when calling
+ *  another origin (cookies do not cross origins; <img>, <video> and EventSource cannot set headers). */
+export function abs(u: string | null | undefined): string {
+  if (!u) return ''
+  if (/^https?:\/\//.test(u)) return u
+  let out = API_BASE + u
+  const tok = getToken()
+  if (tok && API_BASE) out += (out.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(tok)
+  return out
+}
+
 export function getToken(): string { try { return localStorage.getItem('wc_token') ?? '' } catch { return '' } }
 export function setToken(t: string) {
   try { localStorage.setItem('wc_token', t) } catch { /* ignore */ }
@@ -59,7 +78,7 @@ async function req<T>(method: string, url: string, body?: unknown, raw?: BodyIni
   if (!raw && body !== undefined) headers['Content-Type'] = 'application/json'
   const tok = getToken()
   if (tok) headers['X-Wildcut-Token'] = tok
-  const r = await fetch(url, { method, headers, body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined) })
+  const r = await fetch(API_BASE + url, { method, headers, body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined) })
   if (r.status === 401) { window.dispatchEvent(new CustomEvent('wc-auth-required')) }
   if (!r.ok) {
     let msg = r.statusText
@@ -116,8 +135,8 @@ export const api = {
   job: (jobId: string) => req<Job>('GET', `/api/jobs/${jobId}`),
 }
 
-export const frameUrl = (projectId: string, t: number, width = 360) => `/api/projects/${projectId}/frame?t=${t.toFixed(3)}&width=${width}`
-export const clipFrameUrl = (projectId: string, clipId: string, t: number, width = 320) => `/api/projects/${projectId}/clips/${clipId}/frame?t=${t.toFixed(2)}&width=${width}`
-export const fileUrl = (path: string) => `/api/file?path=${encodeURIComponent(path)}`
+export const frameUrl = (projectId: string, t: number, width = 360) => abs(`/api/projects/${projectId}/frame?t=${t.toFixed(3)}&width=${width}`)
+export const clipFrameUrl = (projectId: string, clipId: string, t: number, width = 320) => abs(`/api/projects/${projectId}/clips/${clipId}/frame?t=${t.toFixed(2)}&width=${width}`)
+export const fileUrl = (path: string) => abs(`/api/file?path=${encodeURIComponent(path)}`)
 export const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`
 export const fmtShort = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`

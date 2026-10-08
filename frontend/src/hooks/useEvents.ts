@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { abs } from '../api'
 
 export type Snapshot = {
   project: { id: string; status: string; progress: number; message: string; updated_at: string; claude_spend_usd: number; song_path: string | null }
@@ -14,7 +15,7 @@ export function useEvents(projectId: string | undefined) {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   useEffect(() => {
     if (!projectId) return
-    const es = new EventSource(`/api/projects/${projectId}/events`)
+    const es = new EventSource(abs(`/api/projects/${projectId}/events`))
     let prev: Snapshot | null = null
     es.onmessage = (ev) => {
       const next = JSON.parse(ev.data) as Snapshot

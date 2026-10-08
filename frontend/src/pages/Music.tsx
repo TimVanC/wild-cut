@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import WaveSurfer from 'wavesurfer.js'
-import { api, fmtShort, type BeatGrid } from '../api'
+import { abs, api, fmtShort, type BeatGrid } from '../api'
 import FileBrowser from '../components/FileBrowser'
 
 export default function Music() {
@@ -47,7 +47,7 @@ export default function Music() {
       </div>
       {p?.song_path && !grid.data && <div className="card p-4 muted text-sm">Analyzing beats, bass hits and the drop…</div>}
       {p?.song_url && grid.data && (
-        <Waveform url={p.song_url} grid={grid.data} window={p.song_window} targetLen={targetLen}
+        <Waveform url={abs(p.song_url)} grid={grid.data} window={p.song_window} targetLen={targetLen}
           onWindow={(s, e) => setWindow.mutate({ start: s, end: e, locked: true })} onDrop={(t) => setDrop.mutate(t)} />
       )}
       {grid.data && (

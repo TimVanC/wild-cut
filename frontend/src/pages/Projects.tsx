@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { api, type Project } from '../api'
+import { abs, api, type Project } from '../api'
 
 export default function Projects() {
   const qc = useQueryClient()
@@ -29,7 +29,7 @@ export default function Projects() {
         {projects.data?.map(p => (
           <div key={p.id} className="card overflow-hidden flex flex-col">
             <Link to={`/p/${p.id}/${dest(p)}`} className="block aspect-[4/3] bg-black/40 relative">
-              {p.thumb_url ? <img src={p.thumb_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center muted text-xs">no footage yet</div>}
+              {p.thumb_url ? <img src={abs(p.thumb_url)} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center muted text-xs">no footage yet</div>}
               <span className="absolute top-2 left-2 pill" style={{ background: 'rgba(0,0,0,.6)' }}>{p.style}</span>
               {p.options?.documentary && <span className="absolute top-2 right-2 pill" style={{ background: 'rgba(0,0,0,.6)' }}>doc</span>}
             </Link>

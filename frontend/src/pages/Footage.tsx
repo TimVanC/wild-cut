@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, fileUrl, type Clip, type StockResult } from '../api'
+import { abs, api, fileUrl, type Clip, type StockResult } from '../api'
 import FileBrowser from '../components/FileBrowser'
 
 export default function Footage() {
@@ -71,7 +71,7 @@ export default function Footage() {
             {library.data?.length === 0 && <div className="muted text-sm col-span-full">Library is empty. Imported stock clips and inbox drops land here for reuse.</div>}
             {library.data?.map(l => (
               <div key={l.id} className="card overflow-hidden">
-                <div className="aspect-video bg-black/40">{l.thumb_url && <img src={l.thumb_url} className="w-full h-full object-cover" alt="" />}</div>
+                <div className="aspect-video bg-black/40">{l.thumb_url && <img src={abs(l.thumb_url)} className="w-full h-full object-cover" alt="" />}</div>
                 <div className="p-2 text-xs">
                   <div className="truncate" title={l.path}>{l.query || l.source_id}</div>
                   <div className="muted truncate">{l.source} · {l.duration.toFixed(1)}s · {l.width}x{l.height}</div>
@@ -128,11 +128,11 @@ function StockCard({ r, picked, onToggle }: { r: StockResult; picked: boolean; o
 
 function ClipRow({ c, pid, onRemove }: { c: Clip; pid: string; onRemove: () => void }) {
   const [hover, setHover] = useState(false)
-  const src = c.proxy_url ?? fileUrl(c.path)
+  const src = c.proxy_url ? abs(c.proxy_url) : fileUrl(c.path)
   return (
     <div className="card p-2 flex gap-2" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div className="w-28 aspect-video bg-black/50 rounded overflow-hidden shrink-0">
-        {hover ? <video src={src} muted autoPlay loop playsInline className="w-full h-full object-cover" /> : c.thumb_url ? <img src={c.thumb_url} className="w-full h-full object-cover" alt="" /> : null}
+        {hover ? <video src={src} muted autoPlay loop playsInline className="w-full h-full object-cover" /> : c.thumb_url ? <img src={abs(c.thumb_url)} className="w-full h-full object-cover" alt="" /> : null}
       </div>
       <div className="min-w-0 flex-1 text-xs">
         <div className="font-medium">{c.label} <span className="muted">· {c.duration.toFixed(1)}s · {c.width}x{c.height}</span></div>

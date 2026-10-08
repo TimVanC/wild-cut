@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, clipFrameUrl, type Edl, type Moment } from '../api'
+import { abs, api, clipFrameUrl, type Edl, type Moment } from '../api'
 import type { Selection } from './Timeline'
 
 export default function Inspector({ pid, edl, selection, onOp, onClose }: { pid: string; edl: Edl; selection: Selection; onOp: (op: string, args: Record<string, unknown>) => void; onClose: () => void }) {
@@ -42,7 +42,7 @@ function ClipInspector({ pid, edl, id, onOp, onClose }: { pid: string; edl: Edl;
       <div className="grid grid-cols-2 gap-2 max-h-[46vh] overflow-auto scroll pr-1">
         {alternatives.map((m: Moment) => (
           <button key={m.id} className="card p-1 text-left hover:border-[var(--accent)]" onClick={() => onOp('swap_moment', { item_id: c.id, moment_id: m.id })} title={`${m.caption_hint} score ${m.score}`}>
-            <div className="aspect-video bg-black/50 rounded overflow-hidden"><img src={m.thumb_url ?? clipFrameUrl(pid, m.clip_id, m.peak_t)} className="w-full h-full object-cover" loading="lazy" alt="" /></div>
+            <div className="aspect-video bg-black/50 rounded overflow-hidden"><img src={m.thumb_url ? abs(m.thumb_url) : clipFrameUrl(pid, m.clip_id, m.peak_t)} className="w-full h-full object-cover" loading="lazy" alt="" /></div>
             <div className="truncate mt-1">{edl.clips.find(x => x.clip_id === m.clip_id)?.label ?? ''} {m.action} @ {m.peak_t.toFixed(1)}s</div>
             <div className="muted truncate">{m.caption_hint || `score ${m.score.toFixed(2)}`}{m.starred ? ' ★' : ''}</div>
           </button>

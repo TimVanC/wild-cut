@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type Clip } from '../api'
+import { abs, api, type Clip } from '../api'
 import { activeJob, type Snapshot } from '../hooks/useEvents'
 
 export default function DirectorChat({ pid, snap, clips }: { pid: string; snap: Snapshot | null; clips: Clip[] }) {
@@ -28,7 +28,7 @@ export default function DirectorChat({ pid, snap, clips }: { pid: string; snap: 
           <div className="flex gap-2 overflow-x-auto pb-1">
             {clips.map(c => (
               <div key={c.id} className="shrink-0 w-28 text-[11px]">
-                <div className="aspect-video rounded bg-black/50 overflow-hidden">{c.thumb_url && <img src={c.thumb_url} className="w-full h-full object-cover" alt="" />}</div>
+                <div className="aspect-video rounded bg-black/50 overflow-hidden">{c.thumb_url && <img src={abs(c.thumb_url)} className="w-full h-full object-cover" alt="" />}</div>
                 <div className="truncate mt-0.5"><b>{c.label}</b> {c.analyzed ? '' : <span className="muted">(analyzing)</span>}</div>
                 <div className="muted truncate" title={c.description}>{c.description || '…'}</div>
               </div>

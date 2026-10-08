@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, fmtShort, type Project } from '../api'
+import { abs, api, fmtShort, type Project } from '../api'
 import { activeJob, type Snapshot } from '../hooks/useEvents'
 
 export default function ExportDialog({ pid, project, snap, onClose }: { pid: string; project: Project; snap: Snapshot | null; onClose: () => void }) {
@@ -34,7 +34,7 @@ export default function ExportDialog({ pid, project, snap, onClose }: { pid: str
         </div>
         {latest && !job && (
           <div className="flex flex-col gap-3">
-            <video src={latest.url} controls className="w-full max-h-[42vh] bg-black rounded" />
+            <video src={abs(latest.url)} controls className="w-full max-h-[42vh] bg-black rounded" />
             <div className="text-xs muted truncate" title={latest.path}>{latest.path}</div>
             {latest.sound_offset != null && <div className="card p-3 text-sm" style={{ borderColor: '#5a4518' }}>Silent export: on TikTok, add the same sound and <b style={{ color: 'var(--accent)' }}>start it at {fmtShort(latest.sound_offset)}</b> ({latest.sound_offset.toFixed(2)} s into the track). <button className="btn btn-sm ml-2" onClick={() => copy(fmtShort(latest.sound_offset!))}>copy offset</button></div>}
             <div className="card p-3 text-xs whitespace-pre-wrap">{latest.caption}</div>

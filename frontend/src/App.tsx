@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { NavLink, Route, Routes, useParams, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api, getToken, setToken } from './api'
+import { API_BASE, api, getToken, setToken } from './api'
 import Projects from './pages/Projects'
 import NewProject from './pages/NewProject'
 import Footage from './pages/Footage'
@@ -64,7 +64,7 @@ function TokenGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const on = () => setNeed(true)
     window.addEventListener('wc-auth-required', on)
-    fetch('/api/auth', { headers: getToken() ? { 'X-Wildcut-Token': getToken() } : {} }).then(r => { if (r.status === 401) setNeed(true) }).catch(() => {})
+    fetch(API_BASE + '/api/auth', { headers: getToken() ? { 'X-Wildcut-Token': getToken() } : {} }).then(r => { if (r.status === 401) setNeed(true) }).catch(() => {})
     return () => window.removeEventListener('wc-auth-required', on)
   }, [])
   if (!need) return <>{children}</>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { api, frameUrl, type Edl } from '../api'
+import { abs, api, frameUrl, type Edl } from '../api'
 import { activeJob, useEvents } from '../hooks/useEvents'
 import Timeline, { type Selection } from '../components/Timeline'
 import Inspector from '../components/Inspector'
@@ -86,7 +86,7 @@ export default function Editor() {
         <div className="p-3 flex flex-col gap-2 min-h-0 border-r" style={{ borderColor: 'var(--line)' }}>
           <div className="flex-1 min-h-0 flex items-center justify-center bg-black rounded-lg overflow-hidden relative">
             {previewReady && preview.data?.url ? (
-              <video ref={video} src={preview.data.url} className="max-h-full max-w-full" style={{ aspectRatio: aspect }} controls onTimeUpdate={e => setTime((e.target as HTMLVideoElement).currentTime)} />
+              <video ref={video} src={abs(preview.data.url)} className="max-h-full max-w-full" style={{ aspectRatio: aspect }} controls onTimeUpdate={e => setTime((e.target as HTMLVideoElement).currentTime)} />
             ) : (
               <img src={frameUrl(pid, time, 540)} className="max-h-full max-w-full" style={{ aspectRatio: aspect }} alt="" />
             )}

@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { api, fmtShort } from '../api'
+import { API_BASE, abs, api, fmtShort, getToken } from '../api'
 import { activeJob, useEvents } from '../hooks/useEvents'
 import FileBrowser from '../components/FileBrowser'
 
 type Shot = { index: number; start: number; end: number; duration: number; category: string; species: string; caption: string; score: number; max_motion: number; rejected: string; duplicate_of: number | null; thumb_url: string | null; starred: boolean; banned: boolean; used: boolean; classified_by: string }
 
-async function docGet(id: string) { const r = await fetch(`/api/projects/${id}/documentary`); if (!r.ok) throw new Error(await r.text()); return r.json() }
-async function post(url: string, body?: unknown) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail ?? r.statusText) } return r.json() }
-async function patch(url: string, body: unknown) { const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(await r.text()); return r.json() }
+const hdr = (): Record<string, string> => (getToken() ? { 'X-Wildcut-Token': getToken() } : {})
+async function docGet(id: string) { const r = await fetch(`${API_BASE}/api/projects/${id}/documentary`, { headers: hdr() }); if (!r.ok) throw new Error(await r.text()); return r.json() }
+async function post(url: string, body?: unknown) { const r = await fetch(API_BASE + url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...hdr() }, body: body ? JSON.stringify(body) : undefined }); if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail ?? r.statusText) } return r.json() }
+async function patch(url: string, body: unknown) { const r = await fetch(API_BASE + url, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...hdr() }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(await r.text()); return r.json() }
 
 export default function Documentary() {
   const { id } = useParams()
@@ -100,7 +101,7 @@ function ShotCard({ s, proxy, onStar, onBan }: { s: Shot; proxy: string; onStar:
   return (
     <div className={`card overflow-hidden ${s.banned ? 'opacity-40' : s.used ? 'opacity-60' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div className="aspect-video bg-black relative">
-        {hover && !s.rejected ? <video src={`${proxy}#t=${s.start.toFixed(2)},${s.end.toFixed(2)}`} autoPlay muted loop playsInline className="w-full h-full object-cover" /> : s.thumb_url ? <img src={s.thumb_url} className="w-full h-full object-cover" alt="" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center muted text-xs">{s.rejected}</div>}
+        {hover && !s.rejected ? <video src={`${abs(proxy)}#t=${s.start.toFixed(2)},${s.end.toFixed(2)}`} autoPlay muted loop playsInline className="w-full h-full object-cover" /> : s.thumb_url ? <img src={abs(s.thumb_url)} className="w-full h-full object-cover" alt="" loading="lazy" /> : <div className="w-full h-full flex items-center justify-center muted text-xs">{s.rejected}</div>}
         <span className="absolute top-1 left-1 pill" style={{ background: 'rgba(0,0,0,.65)' }}>{fmtShort(s.start)}–{fmtShort(s.end)}</span>
         {!s.rejected && <span className="absolute top-1 right-1 pill" style={{ background: 'rgba(0,0,0,.65)' }}>{s.score.toFixed(2)}</span>}
         {s.used && <span className="absolute bottom-1 left-1 pill pill-ok">used</span>}
