@@ -101,7 +101,13 @@ class Planner:
         # above everything else, the subject's key action is the hero, other animals only build tension
         focus = req.options.get("focus") or {}
         self.focus_subject = _words(focus.get("subject", ""))
-        self.focus_action = _words(focus.get("action", ""))
+        # the action's words minus the subject and minus other animals in the pool: "escapes the snakes"
+        # must not make every snake shot look like the key action
+        others: set[str] = set()
+        for m in req.moments:
+            if m.species and m.species not in UNKNOWN_SPECIES:
+                others |= _words(m.species)
+        self.focus_action = _words(focus.get("action", "")) - self.focus_subject - (others - self.focus_subject)
         self.pool = [m for m in req.moments if m.id not in self.banned and m.clip_id in self.clips_by_id
                      and m.out_t - m.in_t >= 0.3]
         # jitter in a stable order (clip label, source times): moment ids are random uuids, and sorting by
@@ -129,24 +135,35 @@ class Planner:
         return s + self.focus_bonus(m)
 
     def focus_bonus(self, m: Moment) -> float:
-        """+0.6 when the moment shows the subject, +0.4 more for its key action, -0.5 when the subject is absent."""
+        """+0.6 when the moment shows the subject, +0.4 more for its key action (+0.2 extra when the subject
+        is the moment's own species, not just mentioned), -0.5 when the subject is absent."""
         if not self.focus_subject:
             return 0.0
-        text = _words(f"{m.species} {m.action} {m.caption_hint}")
-        if not (self.focus_subject & text):
+        tier = self.focus_tier(m)
+        if tier == 0:
             return -0.5
-        bonus = 0.6
-        if self.focus_action and (self.focus_action & text):
+        bonus = 0.6 + (0.2 if self.focus_subject & _words(m.species) else 0.0)
+        if tier >= 2:
             bonus += 0.4
         return bonus
 
-    def matches_focus(self, m: Moment, need_action: bool = False) -> bool:
+    def focus_tier(self, m: Moment) -> int:
+        """0 = subject absent, 1 = subject shown, 2 = subject + key action in the caption, 3 = subject + key action
+        is the moment's own action tag (the subject doing the thing, e.g. species iguana / action escape)."""
         if not self.focus_subject:
-            return False
-        text = _words(f"{m.species} {m.action} {m.caption_hint}")
-        if not (self.focus_subject & text):
-            return False
-        return bool(self.focus_action & text) if (need_action and self.focus_action) else True
+            return 0
+        species, action, caption = _words(m.species), _words(m.action), _words(m.caption_hint)
+        if not (self.focus_subject & (species | action | caption)):
+            return 0
+        if self.focus_action and (self.focus_action & action) and (self.focus_subject & species):
+            return 3
+        if self.focus_action and (self.focus_action & (action | caption)):
+            return 2
+        return 1
+
+    def matches_focus(self, m: Moment, need_action: bool = False) -> bool:
+        tier = self.focus_tier(m)
+        return tier >= (2 if (need_action and self.focus_action) else 1)
 
     def is_fully_locked(self, locked: list[dict]) -> bool:
         """Tim pinned the whole order (intro/outro sections added by a preset do not count)."""
@@ -161,8 +178,8 @@ class Planner:
         With a focus, the hero is the subject's key action when any moment shows it, else any moment of the subject."""
         if self.focus_subject:
             saved = self.pool
-            for need_action in (True, False):
-                cands = [m for m in saved if self.matches_focus(m, need_action=need_action)]
+            for min_tier in (3, 2, 1):
+                cands = [m for m in saved if self.focus_tier(m) >= min_tier]
                 if cands:
                     self.pool = cands
                     try:

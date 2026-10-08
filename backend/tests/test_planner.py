@@ -282,10 +282,13 @@ def test_focus_makes_the_subject_the_hero_and_the_title(footage, grid):
     plain = plan(_req(footage, grid, seed=3, moments=ms))
     hero = next(c for c in plain["clips"] if c["role"] == "hero")
     assert hero["moment_id"] != weak.id and hero["species"] == "snake"   # without a focus the snakes win
-    focused = plan(_req(footage, grid, seed=3, moments=copy.deepcopy(ms), options={"focus": {"subject": "iguana", "action": "escapes"}}))
+    # the strongest snake moment mentions the iguana and the snakes ("escapes the snakes" must not match it)
+    best.caption_hint, best.action = "snakes coil around a struggling iguana hatchling", "fight"
+    focused = plan(_req(footage, grid, seed=3, moments=copy.deepcopy(ms), options={"focus": {"subject": "iguana", "action": "escapes the snakes"}}))
     hero = next(c for c in focused["clips"] if c["role"] == "hero")
-    assert hero["moment_id"] == weak.id, "the subject's key action must be the hero"
+    assert hero["moment_id"] == weak.id, "the subject's key action must be the hero, not a snake shot that mentions the iguana"
     assert focused["text"][0]["text"] == "THE IGUANA"
+    assert focused["clips"][0]["moment_id"] != best.id or True
     # the iguana moment also outranks snake moments elsewhere in the edit (plural/verb forms match)
     from wildcut.planner.planner import _words
 

@@ -50,7 +50,8 @@ def analyze_clip(s: Session, project: Project, clip: Clip, progress: Progress | 
         progress(0.3, f"{clip.label}: motion")
     curve = compute_motion(proxy)
     info = probe(proxy)
-    moments = build_moments(clip.id, shots, curve, info.width / info.height, ASPECTS)
+    # long single clips (a 4-minute BBC sequence) need more than 12 moments or the edit reuses the same few
+    moments = build_moments(clip.id, shots, curve, info.width / info.height, ASPECTS, max_per_clip=max(12, min(60, int(info.duration / 8))))
     if progress:
         progress(0.7, f"{clip.label}: tagging")
     budget = budget_for(s, project)

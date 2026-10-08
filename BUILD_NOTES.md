@@ -183,6 +183,12 @@ filters / classification / two distinct edits.
   wizard and the Footage page (two fields), or by the Director's `set_focus(subject, action)`,
   which re-plans everything unpinned; the system prompt tells it to use set_focus (never just the
   title) when Tim says what the edit is about or that it is built around the wrong animal.
+  Second pass after the first live re-plan still made a snake shot the hero (its caption said
+  "snakes coil around a struggling iguana hatchling", and "escapes the snakes" matched "snakes"):
+  the action words now exclude the subject and every other species in the pool, and the hero
+  is chosen by tier (subject's own species + action tag, then subject + action in the caption,
+  then subject anywhere). Long single clips also got a bigger moment cap (duration / 8 s, 12 to
+  60) because 12 moments for a 4.5-minute sequence forced constant reuse.
 - Brief before the first edit (Tim: "I want to direct the AI on my vision and timestamps before it
   creates the edit"): the Footage page has a "Direct the editor first" box saved as
   `options.brief`. The analyze job builds the auto edit as before, then, when Claude is on, hands
