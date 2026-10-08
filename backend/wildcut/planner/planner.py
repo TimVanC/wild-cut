@@ -422,6 +422,10 @@ class Planner:
 
     def rebuild_locked(self, c: dict, beats: list[float], period: float, pacing: dict) -> dict:
         m = self.moment_for_existing(c)
+        role = c.get("role", "build")
+        if role == "hero":
+            role = "build"   # the hero is chosen fresh each plan; a pinned ex-hero is a normal cut
+        c = dict(c, role=role)
         if c.get("locked_range"):
             entry = self.make_clip(m, c["in"], c["out"], c.get("role", "build"), speed=c.get("speed"), item_id=c["id"])
         else:
