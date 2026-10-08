@@ -9,9 +9,9 @@ from __future__ import annotations
 import math
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import cv2
 import numpy as np
@@ -38,7 +38,7 @@ class RenderSettings:
     with_audio: bool = True
     fps: int | None = None
 
-    def resolve(self, edl: dict) -> "RenderSettings":
+    def resolve(self, edl: dict) -> RenderSettings:
         s = RenderSettings(**self.__dict__)
         if s.width is None:
             s.width = edlmod.RENDER_WIDTHS.get(s.quality, 540)
@@ -81,6 +81,32 @@ class Encoder:
             raise MediaError(f"encode failed: {err[-800:]}")
 
 
+def frame_box(frame: float | str | None, out_w: int, out_h: int) -> tuple[int, int]:
+    """Pixel size of the picture box for a clip's `frame` aspect inside the canvas (even sizes).
+    None/0/"fill" fills the canvas; otherwise the box has the given w/h aspect and touches the canvas
+    on its long side, centered, with black elsewhere (Tim's "1.2:1 in the middle with bars")."""
+    fa = parse_frame(frame)
+    if fa is None:
+        return out_w, out_h
+    if fa >= out_w / out_h:
+        w, h = out_w, int(round(out_w / fa / 2)) * 2
+    else:
+        w, h = int(round(out_h * fa / 2)) * 2, out_h
+    return max(2, min(w, out_w)), max(2, min(h, out_h))
+
+
+def parse_frame(frame: float | str | None) -> float | None:
+    """1.2 | "1.2" | "1.2:1" | "16:9" -> aspect; None / 0 / "fill" -> None."""
+    if frame in (None, 0, "", "fill", "none"):
+        return None
+    if isinstance(frame, str):
+        if ":" in frame:
+            a, b = frame.split(":", 1)
+            return float(a) / float(b)
+        return float(frame)
+    return float(frame) if float(frame) > 0 else None
+
+
 class ClipRenderer:
     """Holds the decoder and geometry for one EDL clip."""
 
@@ -110,6 +136,9 @@ class ClipRenderer:
         self.source = ClipFrameSource(path, clip["in"], clip["out"], blend=True, time_offset=offset)
         self.src_w, self.src_h = self.source.width, self.source.height
         self.crop = CropPath.from_dict(clip["crop_path"]) if clip.get("crop_path") else None
+        # "frame": show the clip as a centered box of this aspect (e.g. 1.2) with black around it,
+        # instead of cropping it to fill the whole canvas. None/0 = fill.
+        self.box_w, self.box_h = frame_box(clip.get("frame"), out_w, out_h)
 
     def frame(self, t: float, frame_idx: int, geom: fx.GeomState) -> np.ndarray:
         c = self.clip
@@ -128,14 +157,16 @@ class ClipRenderer:
         else:
             cx, cy = 0.5, 0.5
             cw, ch = 1.0, 1.0
-        # fix aspect of the crop to the output aspect (crop paths were built for it, but be safe)
+        # fix aspect of the crop to the box aspect (crop paths were built for the canvas; a framed clip
+        # keeps the path's center and widens the crop to the box)
+        box_w, box_h = self.box_w, self.box_h
         src_aspect = self.src_w / self.src_h
-        out_aspect = self.out_w / self.out_h
-        if abs((cw * src_aspect) / ch - out_aspect) > 1e-3:
-            if out_aspect < src_aspect:
-                ch, cw = 1.0, out_aspect / src_aspect
+        box_aspect = box_w / box_h
+        if abs((cw * src_aspect) / ch - box_aspect) > 1e-3:
+            if box_aspect < src_aspect:
+                ch, cw = 1.0, box_aspect / src_aspect
             else:
-                cw, ch = 1.0, src_aspect / out_aspect
+                cw, ch = 1.0, src_aspect / box_aspect
         zoom = self.headroom * geom.zoom
         cw_px = cw * self.src_w / zoom
         ch_px = ch * self.src_h / zoom
@@ -145,11 +176,17 @@ class ClipRenderer:
         half_w, half_h = cw_px / 2, ch_px / 2
         cx_px = min(max(cx_px, half_w), self.src_w - half_w)
         cy_px = min(max(cy_px, half_h), self.src_h - half_h)
-        scale = self.out_w / cw_px
+        scale = box_w / cw_px
         M = cv2.getRotationMatrix2D((cx_px, cy_px), geom.rot, scale)
-        M[0, 2] += self.out_w / 2 - cx_px
-        M[1, 2] += self.out_h / 2 - cy_px
-        return cv2.warpAffine(src, M, (self.out_w, self.out_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+        M[0, 2] += box_w / 2 - cx_px
+        M[1, 2] += box_h / 2 - cy_px
+        box = cv2.warpAffine(src, M, (box_w, box_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+        if (box_w, box_h) == (self.out_w, self.out_h):
+            return box
+        out = np.zeros((self.out_h, self.out_w, 3), np.uint8)
+        x0, y0 = (self.out_w - box_w) // 2, (self.out_h - box_h) // 2
+        out[y0:y0 + box_h, x0:x0 + box_w] = box
+        return out
 
     def close(self) -> None:
         self.source.close()

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from sqlalchemy import JSON, Column, event
 from sqlalchemy.engine import Engine
@@ -14,7 +15,7 @@ from wildcut.config import get_settings
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_id() -> str:
@@ -90,6 +91,7 @@ class Documentary(SQLModel, table=True):
     starred: list = Field(default_factory=list, sa_column=Column(JSON))
     banned: list = Field(default_factory=list, sa_column=Column(JSON))
     edit_project_ids: list = Field(default_factory=list, sa_column=Column(JSON))
+    chapters: list = Field(default_factory=list, sa_column=Column(JSON))   # [{"start","end","animal"}] from Tim's timestamps
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
 
@@ -205,7 +207,7 @@ def get_engine(path: Path | None = None) -> Engine:
         _engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False, "timeout": 30})
 
         @event.listens_for(_engine, "connect")
-        def _pragmas(dbapi_conn, _):  # noqa: ANN001
+        def _pragmas(dbapi_conn, _):
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA synchronous=NORMAL")
@@ -221,6 +223,7 @@ def get_engine(path: Path | None = None) -> Engine:
 _ADDED_COLUMNS = {
     "clip": {"window_in": "FLOAT", "window_out": "FLOAT", "src_crop": "JSON"},
     "moment": {"category": "VARCHAR DEFAULT ''", "starred": "BOOLEAN DEFAULT 0", "banned": "BOOLEAN DEFAULT 0"},
+    "documentary": {"chapters": "JSON"},
 }
 
 

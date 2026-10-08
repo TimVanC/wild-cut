@@ -243,3 +243,25 @@ def test_relayout_and_validate(footage, grid):
     edlmod.relayout(e2)
     assert abs(e2["duration"] - (e["duration"] + 0.5)) < 1e-6
     assert edlmod.clip_at(e2, 0.1)["id"] == e2["clips"][0]["id"]
+
+
+def test_frame_survives_regenerate_and_project_default(footage, grid):
+    from wildcut.services import edl_ops
+
+    e = plan(_req(footage, grid, seed=3, options={"frame": 1.2}))
+    assert all(c["frame"] == 1.2 for c in e["clips"]), "project default framing applies to every clip"
+    # one pinned clip switched back to fill by hand keeps that across a re-plan with the same default
+    pinned = e["clips"][1]
+    edl_ops.set_frame(e, pinned["id"], "fill")
+    edl_ops.set_lock(e, pinned["id"], True)
+    assert pinned["frame"] is None
+    out = plan(_req(footage, grid, seed=4, existing=e, options={"frame": 1.2}))
+    kept = next(c for c in out["clips"] if c["id"] == pinned["id"])
+    assert kept["frame"] is None
+    others = [c for c in out["clips"] if c["id"] != pinned["id"]]
+    assert others and all(c["frame"] == 1.2 for c in others)
+    # "apply to all" labels every clip; a bad aspect is rejected
+    note = edl_ops.set_frame(out, None, "16:9")
+    assert "every clip" in note and all(abs(c["frame"] - 16 / 9) < 1e-6 for c in out["clips"])
+    with pytest.raises(edl_ops.EdlOpError):
+        edl_ops.set_frame(out, None, "9:1")

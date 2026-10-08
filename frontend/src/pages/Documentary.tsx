@@ -37,6 +37,11 @@ export default function Documentary() {
   const analyze = useMutation({ mutationFn: async (force: boolean) => { if (!doc.data?.registered) await register.mutateAsync(); return post(`/api/projects/${pid}/documentary/analyze?force=${force}`) }, onSuccess: inv, onError: (e: Error) => setErr(e.message) })
   const flag = useMutation({ mutationFn: ({ index, body }: { index: number; body: { starred?: boolean; banned?: boolean } }) => patch(`/api/projects/${pid}/documentary/shots/${index}`, body), onSuccess: inv })
   const generate = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/generate`, { count: edits }), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const [picked, setPicked] = useState<Record<string, boolean>>({})
+  const [chapterText, setChapterText] = useState('')
+  const [chaptersLoaded, setChaptersLoaded] = useState(false)
+  const saveChapters = useMutation({ mutationFn: async () => { const r = await fetch(`${API_BASE}/api/projects/${pid}/documentary/chapters`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...hdr() }, body: JSON.stringify({ text: chapterText }) }); if (!r.ok) throw new Error(await r.text()); return r.json() }, onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const generateAnimals = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/generate`, { count: 'as_many', animals: Object.keys(picked).filter(k => picked[k]) }), onSuccess: () => { setPicked({}); inv() }, onError: (e: Error) => setErr(e.message) })
   const job = activeJob(snap, ['documentary_analyze', 'documentary_generate'])
   const bank = doc.data?.bank
   const shots: Shot[] = useMemo(() => bank?.shots ?? [], [bank])
@@ -81,6 +86,31 @@ export default function Documentary() {
         </div>
       )}
       {bank?.notes?.length > 0 && <div className="text-xs" style={{ color: 'var(--accent)' }}>{bank.notes.join(' ')}</div>}
+      {bank?.ready && (
+        <div className="card p-4 flex flex-col gap-3">
+          <div className="flex items-center gap-3"><div className="font-medium">One edit per animal</div><span className="muted text-xs">Tick the animals you want; each gets its own 60 to 70 s edit titled after it, built only from that animal's shots.</span></div>
+          <div className="flex flex-wrap gap-2">
+            {(bank.animals ?? []).map((a: any) => (
+              <label key={a.animal} className={`btn btn-sm cursor-pointer ${picked[a.animal] ? 'border-[var(--accent)]' : ''}`}>
+                <input type="checkbox" className="mr-1" checked={!!picked[a.animal]} onChange={e => setPicked(p => ({ ...p, [a.animal]: e.target.checked }))} />
+                {a.animal} <span className="muted ml-1">{a.hero_shots} hero · {Math.round(a.hero_seconds)}s{a.aura_shots ? ` · ${a.aura_shots} aura` : ''}</span>
+              </label>
+            ))}
+            {(bank.animals ?? []).length === 0 && <span className="muted text-sm">No animals with HERO shots yet.</span>}
+          </div>
+          <div className="flex gap-2 items-center">
+            <button className="btn btn-primary" disabled={!!job || !Object.values(picked).some(Boolean)} onClick={() => generateAnimals.mutate()}>Generate {Object.values(picked).filter(Boolean).length || ''} animal edit{Object.values(picked).filter(Boolean).length === 1 ? '' : 's'}</button>
+            <button className="btn btn-sm" onClick={() => setPicked(Object.fromEntries((bank.animals ?? []).filter((a: any) => a.hero_seconds >= 20).map((a: any) => [a.animal, true])))}>select all with 20 s+</button>
+          </div>
+          <details open={!!(bank.chapters ?? []).length} onToggle={() => { if (!chaptersLoaded && bank.chapters?.length) { setChapterText(bank.chapters.map((c: any) => `${Math.floor(c.start / 60)}:${String(Math.floor(c.start % 60)).padStart(2, '0')} ${c.animal}`).join('\n')); setChaptersLoaded(true) } }}>
+            <summary className="cursor-pointer text-sm muted">Know where each animal's segment starts? Paste timestamps (optional, more reliable than species tags){bank.chapters?.length ? ` · ${bank.chapters.length} chapters saved` : ''}</summary>
+            <div className="mt-2 flex gap-2 items-start">
+              <textarea className="input font-mono" rows={6} placeholder={'0:00 lion\n3:12 emperor penguin\n6:40 marine iguana\n...'} value={chapterText} onChange={e => setChapterText(e.target.value)} />
+              <button className="btn" disabled={saveChapters.isPending} onClick={() => saveChapters.mutate()}>Save chapters</button>
+            </div>
+          </details>
+        </div>
+      )}
       {doc.data?.edits?.length > 0 && (
         <div className="card p-4">
           <div className="font-medium mb-2">Generated edits</div>

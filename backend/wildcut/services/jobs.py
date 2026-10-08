@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import traceback
-from typing import Callable
+from collections.abc import Callable
 
 from sqlmodel import Session, select
 
@@ -243,7 +243,7 @@ def _doc_generate(s: Session, job: Job, progress) -> dict:
     from wildcut.documentary.service import generate
 
     project = s.get(Project, job.project_id)
-    ids = generate(s, project, job.payload.get("count", "as_many"), progress)
+    ids = generate(s, project, job.payload.get("count", "as_many"), progress, animals=job.payload.get("animals") or None)
     project.status = "planned"
     s.add(project)
     s.commit()

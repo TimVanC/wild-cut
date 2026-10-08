@@ -14,6 +14,19 @@ function Header({ title, onClose }: { title: string; onClose: () => void }) {
   return <div className="flex items-center mb-2"><div className="font-medium">{title}</div><button className="ml-auto btn btn-sm" onClick={onClose}>close</button></div>
 }
 
+const FRAMES = [
+  { value: 'fill', label: 'fill the frame (crop)' },
+  { value: '1.2:1', label: '1.2:1 box, bars above/below' },
+  { value: '1:1', label: '1:1 box' },
+  { value: '4:3', label: '4:3 box' },
+  { value: '16:9', label: '16:9 full width' },
+]
+function frameValue(f: number | null | undefined): string {
+  if (!f) return 'fill'
+  const hit = FRAMES.find(x => x.value !== 'fill' && Math.abs(Number(x.value.split(':')[0]) / Number(x.value.split(':')[1]) - f) < 0.01)
+  return hit ? hit.value : f.toFixed(2)
+}
+
 function ClipInspector({ pid, edl, id, onOp, onClose }: { pid: string; edl: Edl; id: string; onOp: (op: string, args: Record<string, unknown>) => void; onClose: () => void }) {
   const c = edl.clips.find(x => x.id === id)
   const moments = useQuery({ queryKey: ['moments', pid], queryFn: () => api.moments(pid) })
@@ -37,6 +50,13 @@ function ClipInspector({ pid, edl, id, onOp, onClose }: { pid: string; edl: Edl;
         {c.speed && <select className="input w-24" value={Math.min(...c.speed.map(k => k.rate))} onChange={e => onOp('set_speed_ramp', { item_id: c.id, slow_rate: Number(e.target.value) })}>{[0.3, 0.4, 0.5, 0.7].map(r => <option key={r} value={r}>{r}x</option>)}</select>}
         <button className="btn btn-sm" onClick={() => onOp('set_enabled', { item_id: c.id, enabled: !c.enabled })}>{c.enabled ? 'disable' : 'enable'}</button>
         <button className="btn btn-sm btn-danger" onClick={() => onOp('remove_clip', { item_id: c.id })}>remove</button>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="muted">framing</span>
+        <select className="input w-40" value={frameValue(c.frame)} onChange={e => onOp('set_frame', { item_id: c.id, frame: e.target.value })} title="fill = crop to the vertical canvas; a box shows the shot wider, centered, with black above and below">
+          {FRAMES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+        <button className="btn btn-sm" title="Use this framing for every clip and as the project default (survives Regenerate)" onClick={() => onOp('set_frame', { item_id: null, frame: frameValue(c.frame) })}>apply to all</button>
       </div>
       <div className="font-medium mt-1">Swap for another moment</div>
       <div className="grid grid-cols-2 gap-2 max-h-[46vh] overflow-auto scroll pr-1">

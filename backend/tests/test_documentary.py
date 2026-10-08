@@ -10,7 +10,12 @@ from sqlmodel import Session, select
 
 from wildcut.claude import ClaudeClient, set_client_for_tests
 from wildcut.db import Clip, Project, get_engine
-from wildcut.documentary.bank import DocShotBatch, DocShotTag, analyze_documentary, estimate_edits
+from wildcut.documentary.bank import (
+    DocShotBatch,
+    DocShotTag,
+    analyze_documentary,
+    estimate_edits,
+)
 from wildcut.documentary.filters import text_score
 from wildcut.documentary.letterbox import detect_letterbox
 from wildcut.media import extract_frames
@@ -265,3 +270,75 @@ def test_film_wide_watermark_is_kept(doc_assets, bank):
     assert b["rejected"]["text"] <= 5, b["rejected"]
     assert any("watermark" in n for n in b.get("notes", []))
     assert b["animal"] == "any" and b["categories"]["hero"] >= 25
+
+
+def test_parse_chapters_and_grouping():
+    from wildcut.documentary.bank import BankShot
+    from wildcut.documentary.service import animals_in_bank, parse_chapters, shot_animal
+
+    ch = parse_chapters("0:00 Lion\n3:12 - Emperor Penguin\nnot a timestamp\n1:02:40 marine iguana.\n", 4000.0)
+    assert [c["animal"] for c in ch] == ["lion", "emperor penguin", "marine iguana"]
+    assert ch[0] == {"start": 0.0, "end": 192.0, "animal": "lion"}
+    assert ch[1]["end"] == 3760.0 and ch[2]["end"] == 4000.0
+    shot = BankShot(index=0, start=100.0, end=104.0, duration=4.0, species="hyena", category="hero", score=1.0)
+    assert shot_animal(shot, ch) == "lion"            # chapters win over species tags
+    assert shot_animal(shot, []) == "hyena"
+    shots = [BankShot(index=i, start=10.0 * i, end=10.0 * i + 4, duration=4.0, species="x", category="hero" if i % 2 else "aura", score=1.0).to_dict() for i in range(40)]
+    rows = animals_in_bank({"shots": shots}, ch)
+    assert [r["animal"] for r in rows] == ["lion", "emperor penguin"]   # nothing after 1:02:40 in a 400 s span
+    assert rows[0]["hero_shots"] == 9 and rows[0]["aura_shots"] == 10 and rows[0]["hero_seconds"] == 36.0   # shot 19 (190-194 s) sits on the 192 s edge, mid 192 -> penguin
+    assert rows[1]["hero_shots"] == 11
+
+
+def test_generate_one_edit_per_animal(doc_project, doc_assets, bank):
+    """Tim's chapters split a compilation; each animal gets its own titled edit from its own shots."""
+    from wildcut.documentary.service import (
+        analyze,
+        generate,
+        get_documentary,
+        parse_chapters,
+    )
+
+    with Session(get_engine()) as s:
+        p = s.get(Project, doc_project)
+        analyze(s, p)
+        doc = get_documentary(s, p.id)
+        half = doc.duration / 2
+        doc.chapters = parse_chapters(f"0:00 red fox\n{int(half // 60)}:{int(half % 60):02d} snow leopard", doc.duration)
+        s.add(s.merge(doc))
+        s.commit()
+        ids = generate(s, p, "as_many", animals=["snow leopard", "red fox"])
+        assert len(ids) == 2
+        for pid, name, lo, hi in zip(ids, ["snow leopard", "red fox"], [half, 0.0], [doc.duration, half]):
+            child = s.get(Project, pid)
+            assert child.name.endswith(name)
+            edl = current_edl(s, child).json
+            assert edl["text"][0]["text"] == f"THE {name.upper()}"
+            clips = {c.id: c for c in s.exec(select(Clip).where(Clip.project_id == pid)).all()}
+            for c in edl["clips"]:
+                clip = clips[c["clip_id"]]
+                if clip.tags["category"] in ("hero", "aura"):
+                    mid = (clip.window_in + clip.window_out) / 2
+                    assert lo <= mid < hi, (name, mid)
+
+
+def test_chapters_endpoint_groups_animals(doc_project, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from wildcut.api.app import app
+    from wildcut.documentary.service import analyze
+
+    with Session(get_engine()) as s:
+        p = s.get(Project, doc_project)
+        analyze(s, p)
+    client = TestClient(app)
+    r = client.put(f"/api/projects/{doc_project}/documentary/chapters", json={"text": "0:00 red fox\n4:00 snow leopard\nnonsense line"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [c["animal"] for c in body["chapters"]] == ["red fox", "snow leopard"]
+    assert [a["animal"] for a in body["animals"]] == ["red fox", "snow leopard"]
+    assert all(a["hero_shots"] > 0 for a in body["animals"])
+    bank = client.get(f"/api/projects/{doc_project}/documentary").json()["bank"]
+    assert bank["chapters"] == body["chapters"] and [a["animal"] for a in bank["animals"]] == ["red fox", "snow leopard"]
+    r = client.post(f"/api/projects/{doc_project}/documentary/generate", json={"count": "as_many", "animals": ["snow leopard"]})
+    assert r.status_code == 200 and r.json()["job"]["payload"]["animals"] == ["snow leopard"]

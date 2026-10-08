@@ -102,3 +102,34 @@ def test_cinematic_render_is_square(footage, grid, tmp_path):  # noqa: F811
     out = render_video(e, tmp_path / "cine.mp4", RenderSettings(quality="preview", width=200))
     info = probe(out)
     assert (info.width, info.height) == (200, 200)
+
+
+def test_frame_box_letterboxes_clip(phonk_edl):
+    """A clip framed 1.2:1 renders as a full-width box centered in the 9:16 canvas with black above and below."""
+    import copy
+
+    from wildcut.render.composer import frame_box, parse_frame
+
+    assert frame_box(None, 270, 480) == (270, 480)
+    assert frame_box("fill", 270, 480) == (270, 480)
+    assert frame_box(1.2, 270, 480) == (270, 224)          # 270 / 1.2 = 225 -> even 224
+    assert frame_box("16:9", 270, 480) == (270, 152)
+    assert frame_box(0.4, 270, 480) == (192, 480)          # narrower than the canvas: pillarbox
+    assert parse_frame("1.2:1") == 1.2 and parse_frame("1.2") == 1.2 and parse_frame(0) is None
+    edl = copy.deepcopy(phonk_edl)
+    for c in edl["clips"]:
+        c["frame"] = 1.2
+    edl["effects"] = []     # no flash/dim so the bars are measurable
+    edl["overlays"] = {}
+    clip = edl["clips"][1]
+    t = clip["start"] + clip["tl_duration"] / 2
+    frame = render_frame(edl, t, width=270)
+    h = frame.shape[0]
+    bar = (h - 224) // 2
+    assert frame[: bar - 1].max() == 0 and frame[h - bar + 1:].max() == 0, "bars above/below must be black"
+    assert frame[h // 2 - 40: h // 2 + 40].mean() > 20, "the picture box must hold the clip"
+    # fill mode has no black bars on the same frame
+    for c in edl["clips"]:
+        c["frame"] = None
+    full = render_frame(edl, t, width=270)
+    assert full[:8].mean() > 5 or full[-8:].mean() > 5

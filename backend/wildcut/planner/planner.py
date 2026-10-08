@@ -21,7 +21,12 @@ from wildcut.analysis.tracking import crop_size
 from wildcut.music.analysis import BeatGridData, auto_window
 from wildcut.planner import edl as edlmod
 from wildcut.planner.presets import load_preset, pick
-from wildcut.planner.speed import hero_ramp, source_at, timeline_between, timeline_duration
+from wildcut.planner.speed import (
+    hero_ramp,
+    source_at,
+    timeline_between,
+    timeline_duration,
+)
 
 MIN_SLOT = 0.25
 UNKNOWN_SPECIES = {"", "animal", "none", "unknown", "auto", "any"}
@@ -171,6 +176,8 @@ class Planner:
         }
         if clip.src_crop:
             entry["src_crop"] = list(clip.src_crop)
+        if self.req.options.get("frame"):
+            entry["frame"] = self.req.options["frame"]       # project default framing (Inspector "apply to all")
         entry.update(extra)
         self.used_moments.add(m.id)
         return entry
@@ -415,6 +422,7 @@ class Planner:
             entry["locked_order"] = bool(locked.get("locked_order"))
             entry["locked_range"] = bool(locked.get("locked_range"))
             entry["anchor"] = locked.get("anchor")
+            carry_frame(entry, locked)
         entry["tl_duration"] = round(timeline_duration(entry["in"], entry["out"], speed), 4)
         lead = timeline_between(speed, entry["in"], entry["peak"])
         entry["start"] = round(max(0.0, D - lead), 4)
@@ -437,6 +445,7 @@ class Planner:
         entry["locked_order"] = bool(c.get("locked_order"))
         entry["locked_range"] = bool(c.get("locked_range"))
         entry["anchor"] = c.get("anchor")
+        carry_frame(entry, c)
         entry["tl_duration"] = round(timeline_duration(entry["in"], entry["out"], entry.get("speed")), 4)
         return entry
 
@@ -704,6 +713,7 @@ class Planner:
                 se = m.shot_end if m.shot_end > m.shot_start else cl.duration
                 e = self.make_clip(m, max(ss, m.peak_t - lead), min(se, m.peak_t + tail), c.get("role", "build"), item_id=c["id"])
             e["locked_order"], e["locked_range"], e["anchor"] = bool(c.get("locked_order")), bool(c.get("locked_range")), c.get("anchor")
+            carry_frame(e, c)
             e["tl_duration"] = round(timeline_duration(e["in"], e["out"], e.get("speed")), 4)
             return e
 
@@ -793,6 +803,12 @@ class Planner:
                     effects.append(self.effect("zoom_punch", pt, cfg.get("ease_ms", 200) / 1000.0, {"scale": pick(cfg.get("scale", 1.08), self.intensity)}))
         self.add_clip_effects(effects, fx_cfg)
         self.edl["effects"] = effects
+
+
+def carry_frame(entry: dict, old: dict) -> None:
+    """A clip whose framing Tim set by hand keeps it across re-plans (the key is present even when None = fill)."""
+    if "frame" in old:
+        entry["frame"] = old["frame"]
 
 
 def plan(req: PlanRequest) -> dict:

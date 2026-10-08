@@ -73,6 +73,15 @@ def test_full_flow_music_phonk(client, assets):
     assert r.status_code == 200, r.text
     swapped = next(c for c in r.json()["edl"]["clips"] if c["id"] == hero["id"])
     assert swapped["moment_id"] == other["id"] and swapped["locked_range"]
+    # framing: one clip boxed 1.2:1, then "apply to all" which also becomes the project default
+    r = client.post(f"/api/projects/{pid}/edl/op", json={"op": "set_frame", "args": {"item_id": hero["id"], "frame": "1.2:1"}, "preview": False})
+    assert r.status_code == 200, r.text
+    assert next(c for c in r.json()["edl"]["clips"] if c["id"] == hero["id"])["frame"] == 1.2
+    r = client.post(f"/api/projects/{pid}/edl/op", json={"op": "set_frame", "args": {"item_id": None, "frame": "16:9"}, "preview": False})
+    assert all(abs(c["frame"] - 16 / 9) < 1e-6 for c in r.json()["edl"]["clips"])
+    assert abs(client.get(f"/api/projects/{pid}").json()["options"]["frame"] - 16 / 9) < 1e-6
+    r = client.post(f"/api/projects/{pid}/edl/op", json={"op": "set_frame", "args": {"item_id": None, "frame": "fill"}, "preview": False})
+    assert all(c["frame"] is None for c in r.json()["edl"]["clips"])
     assert r.json()["changed"], "a swap must mark preview chunks dirty"
     v_before = client.get(f"/api/projects/{pid}/edl").json()["version"]
     u = client.post(f"/api/projects/{pid}/edl/undo").json()

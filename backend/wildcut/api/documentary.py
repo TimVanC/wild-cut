@@ -10,7 +10,14 @@ from sqlmodel import Session
 from wildcut.api.app import _project, app, project_out
 from wildcut.db import Project, get_session
 from wildcut.documentary.bank import estimate_edits
-from wildcut.documentary.service import bank_view, flags, get_documentary, load_bank, register, used_indexes
+from wildcut.documentary.service import (
+    bank_view,
+    flags,
+    get_documentary,
+    load_bank,
+    register,
+    used_indexes,
+)
 from wildcut.media import MediaError
 from wildcut.services.jobs import enqueue
 from wildcut.services.projects import project_dir
@@ -29,6 +36,11 @@ class FlagIn(BaseModel):
 
 class GenerateIn(BaseModel):
     count: str | int = "as_many"
+    animals: list[str] | None = None     # one edit per listed animal
+
+
+class ChaptersIn(BaseModel):
+    text: str = ""                       # one per line: "3:12 emperor penguin"
 
 
 @app.post("/api/projects/{project_id}/documentary/register")
@@ -111,5 +123,21 @@ def doc_generate(project_id: str, body: GenerateIn | None = None, s: Session = D
     if p.mode == "music" and not p.song_path:
         raise HTTPException(400, "music-synced documentary project: add a song first (Music tab) or switch to visual peaks")
     body = body or GenerateIn()
-    job = enqueue(s, p.id, "documentary_generate", {"count": body.count})
+    job = enqueue(s, p.id, "documentary_generate", {"count": body.count, "animals": [a.strip() for a in (body.animals or []) if a.strip()]})
     return {"job": job.model_dump()}
+
+
+@app.put("/api/projects/{project_id}/documentary/chapters")
+def doc_chapters(project_id: str, body: ChaptersIn, s: Session = Depends(get_session)) -> dict:
+    """Tim's timestamps: which animal each part of the film is about. Overrides species tags for grouping."""
+    from wildcut.documentary.service import animals_in_bank, parse_chapters
+
+    p = _project(s, project_id)
+    doc = get_documentary(s, p.id)
+    if doc is None:
+        raise HTTPException(404, "no documentary")
+    doc.chapters = parse_chapters(body.text, doc.duration)
+    s.add(doc)
+    s.commit()
+    bank = load_bank(doc)
+    return {"chapters": doc.chapters, "animals": animals_in_bank(bank, doc.chapters) if bank else []}

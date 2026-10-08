@@ -20,7 +20,13 @@ from wildcut.planner import edl as edlmod
 from wildcut.planner.planner import ClipInfo
 from wildcut.planner.speed import timeline_between
 from wildcut.services import edl_ops
-from wildcut.services.planning import clip_infos, load_grid, move_cursor, plan_project, save_edl_version
+from wildcut.services.planning import (
+    clip_infos,
+    load_grid,
+    move_cursor,
+    plan_project,
+    save_edl_version,
+)
 
 
 class ToolError(ValueError):
@@ -60,7 +66,7 @@ def resolve_clip(ctx: Context, ref: Any) -> Clip:
                 return c
         raise ToolError(f"there is no Clip {n}; clips are 1..{len(clips)}")
     r = str(ref).strip()
-    m = re.match(r"^clip\s*(\d+)$", r, re.I)
+    m = re.match(r"^clip\s*(\d+)$", r, re.IGNORECASE)
     if m:
         return resolve_clip(ctx, int(m.group(1)))
     for c in clips:
@@ -350,6 +356,23 @@ def t_set_speed_ramp(ctx: Context, clip: Any, slow_rate: float | None = 0.4, sou
     return {"ok": True, "note": note}
 
 
+def t_set_frame(ctx: Context, frame: Any, clip: Any = None, **_) -> dict:
+    if clip in (None, "", "all"):
+        note = edl_ops.set_frame(ctx.edl, None, frame)
+        opts = dict(ctx.project.options or {})
+        opts["frame"] = edl_ops.parse_frame_arg(frame)
+        ctx.project.options = opts
+        ctx.s.add(ctx.project)
+    else:
+        c = resolve_clip(ctx, clip)
+        item = edl_item_for_clip(ctx, c)
+        if item is None:
+            raise ToolError(f"{c.label} is not in the edit")
+        note = edl_ops.set_frame(ctx.edl, item["id"], frame)
+    ctx.commit(note)
+    return {"ok": True, "note": note}
+
+
 def t_set_style(ctx: Context, style: str, aspect: str | None = None, **_) -> dict:
     from wildcut.planner.presets import load_preset
 
@@ -455,6 +478,7 @@ TOOLS: list[dict] = [
     {"name": "toggle_effect", "description": "Enable or disable one effect.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["effect_id", "enabled"]}},
     {"name": "set_intensity", "description": "Set effect intensity (low/med/high) for one effect or all effects.", "input_schema": {"type": "object", "properties": {"intensity": {"type": "string", "enum": ["low", "med", "high"]}, "effect_id": {"type": "string"}}, "required": ["intensity"]}},
     {"name": "set_speed_ramp", "description": "Put a slow-motion ramp on a clip around a source time (slow_rate 0.3-0.7), or remove it (slow_rate null/1).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "slow_rate": {"type": ["number", "null"]}, "source_time": {"type": "number"}}, "required": ["clip"]}},
+    {"name": "set_frame", "description": "How a clip sits in the vertical canvas. 'fill' crops it to fill the whole frame (default). An aspect such as '1.2:1', '4:3' or '16:9' shows the clip as a centered box of that shape at full width with black above and below, which suits wide shots that crop badly to 9:16. Omit clip (or 'all') to apply to every clip and make it the project default.", "input_schema": {"type": "object", "properties": {"frame": {"type": "string", "description": "'fill', '1.2:1', '1:1', '4:3', '16:9', or a w/h number as text"}, "clip": _CLIP}, "required": ["frame"]}},
     {"name": "set_style", "description": "Switch the style preset (phonk, cinematic, chase) and optionally the aspect; re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"style": {"type": "string"}, "aspect": {"type": "string", "enum": ["9:16", "1:1", "4:5", "3:4"]}}, "required": ["style"]}},
     {"name": "set_song_window", "description": "Choose which part of the song the edit uses (seconds in the song file); re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}, "required": ["start", "end"]}},
     {"name": "plan_auto", "description": "Auto-fill whatever Tim did not specify. scope: 'fill' keeps every locked choice and re-plans the rest; 'text' only regenerates the title; 'all_unlock' ignores locks.", "input_schema": {"type": "object", "properties": {"scope": {"type": "string", "enum": ["fill", "text", "all_unlock"]}, "new_seed": {"type": "boolean"}}}},

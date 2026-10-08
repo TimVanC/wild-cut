@@ -3,19 +3,27 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from sqlmodel import Session, select
 
-from wildcut.analysis.moments import ASPECTS, Moment as MomentData, build_moments
+from wildcut.analysis.moments import ASPECTS, build_moments
+from wildcut.analysis.moments import Moment as MomentData
 from wildcut.analysis.motion import MotionCurve
 from wildcut.analysis.shots import Shot
 from wildcut.claude import BudgetTracker, get_client
 from wildcut.config import get_settings
-from wildcut.db import Clip, Documentary, Moment as MomentRow, Project, now
-from wildcut.documentary.bank import BankShot, analyze_documentary, cache_dir_for, estimate_edits
+from wildcut.db import Clip, Documentary, Project, now
+from wildcut.db import Moment as MomentRow
+from wildcut.documentary.bank import (
+    BankShot,
+    analyze_documentary,
+    cache_dir_for,
+    estimate_edits,
+)
 from wildcut.documentary.planner import partition_shots
 from wildcut.media import MediaError, probe
 from wildcut.services.jobs import enqueue
@@ -23,6 +31,64 @@ from wildcut.services.planning import plan_project
 from wildcut.services.projects import project_dir, write_json
 
 log = logging.getLogger(__name__)
+
+
+CHAPTER_RE = re.compile(r"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})(?:\.(\d+))?\s*[-\u2013:|]?\s*(.+?)\s*$")
+
+
+def parse_chapters(text: str, duration: float) -> list[dict]:
+    """'0:00 lion', '3:12 - emperor penguin', '1:02:40 iguana' (one per line) -> [{start, end, animal}]."""
+    rows = []
+    for line in (text or "").splitlines():
+        m = CHAPTER_RE.match(line)
+        if not m:
+            continue
+        h, mi, se, frac, animal = m.groups()
+        t = (int(h) if h else 0) * 3600 + int(mi) * 60 + int(se) + (float("0." + frac) if frac else 0.0)
+        rows.append({"start": round(t, 2), "animal": animal.strip().lower().rstrip(".")})
+    rows.sort(key=lambda r: r["start"])
+    for i, r in enumerate(rows):
+        r["end"] = round(rows[i + 1]["start"], 2) if i + 1 < len(rows) else round(duration, 2)
+    return [r for r in rows if r["end"] > r["start"]]
+
+
+def shot_animal(shot: BankShot, chapters: list[dict]) -> str:
+    """The animal a shot belongs to: its chapter when Tim gave timestamps, else Claude's species tag."""
+    mid = (shot.start + shot.end) / 2
+    for c in chapters or []:
+        if c["start"] <= mid < c["end"]:
+            return c["animal"]
+    return (shot.species or "").strip().lower()
+
+
+def _same_animal(a: str, b: str) -> bool:
+    a, b = a.strip().lower(), b.strip().lower()
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a or a.rstrip("s") == b.rstrip("s")
+
+
+def animals_in_bank(bank: dict, chapters: list[dict]) -> list[dict]:
+    """Per animal: HERO/AURA seconds and shot counts (chapter-based when chapters exist)."""
+    shots = [BankShot.from_dict(d) for d in bank["shots"]]
+    out: dict[str, dict] = {}
+    for b in shots:
+        if b.rejected or b.category not in ("hero", "aura"):
+            continue
+        name = shot_animal(b, chapters)
+        if not name or name == "none":
+            continue
+        row = out.setdefault(name, {"animal": name, "hero_shots": 0, "hero_seconds": 0.0, "aura_shots": 0, "first_seen": b.start})
+        if b.category == "hero":
+            row["hero_shots"] += 1
+            row["hero_seconds"] += b.duration
+        else:
+            row["aura_shots"] += 1
+    rows = sorted(out.values(), key=lambda r: r["first_seen"])     # film order, like Tim's timestamps
+    for r in rows:
+        r["hero_seconds"] = round(r["hero_seconds"], 1)
+        r["first_seen"] = round(r["first_seen"], 1)
+    return rows
 
 
 def get_documentary(s: Session, project_id: str) -> Documentary | None:
@@ -132,6 +198,7 @@ def bank_view(s: Session, doc: Documentary) -> dict:
             "crop": bank["crop"], "duration": bank["duration"], "timings": bank["timings"], "n_shots": bank["n_shots"], "n_kept": bank["n_kept"],
             "rejected": bank["rejected"], "categories": bank["categories"], "classified_by_claude": bank.get("classified_by_claude", 0),
             "notes": bank.get("notes", []), "species": bank.get("species", []),
+            "animals": animals_in_bank(bank, list(doc.chapters or [])), "chapters": list(doc.chapters or []),
             "estimate": estimate_edits(bank, used, banned), "shots": shots}
 
 
@@ -156,8 +223,10 @@ def _moments_for_shot(clip: Clip, shot: BankShot, curve: MotionCurve, src_aspect
     return ms
 
 
-def generate(s: Session, project: Project, count: int | str, progress: Callable[[float, str], None] | None = None) -> list[str]:
-    """Create `count` child projects (or as many as supported) from disjoint HERO/AURA shot sets."""
+def generate(s: Session, project: Project, count: int | str, progress: Callable[[float, str], None] | None = None,
+             animals: list[str] | None = None) -> list[str]:
+    """Create child projects from disjoint HERO/AURA shot sets: `count` edits, or one edit per animal
+    in `animals` (shots grouped by Tim's chapters when given, else by Claude's species tag)."""
     doc = get_documentary(s, project.id)
     if doc is None:
         raise MediaError("analyze the documentary first")
@@ -167,17 +236,35 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
     starred, banned = flags(doc)
     used = used_indexes(s, doc)
     est = estimate_edits(bank, used, banned)
-    n = est["supported"] if count in ("as_many", "auto", None) else int(count)
-    if n <= 0:
-        n = 1 if est["hero_shots"] > 0 else 0
-    if n == 0:
-        raise MediaError("not enough HERO footage for an edit")
     shots = [BankShot.from_dict(d) for d in bank["shots"]]
-    ok = [b for b in shots if not b.rejected and b.index not in banned and b.index not in used]
-    hero = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in ok if b.category == "hero"]
-    aura = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in ok if b.category == "aura"]
-    broll = [b.to_dict() for b in shots if not b.rejected and b.category == "broll" and b.index not in banned]
-    sets = partition_shots(hero, aura, broll, n)
+    chapters = list(doc.chapters or [])
+    if animals:
+        ok = [b for b in shots if not b.rejected and b.index not in banned]
+        sets = []
+        for name in animals:
+            mine = [b for b in ok if _same_animal(shot_animal(b, chapters), name)]
+            hero = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in mine if b.category == "hero"]
+            aura = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in mine if b.category == "aura"]
+            # establishing shots only from the same animal: a lion edit never opens on hermit crabs
+            broll = [b.to_dict() for b in ok if b.category == "broll" and _same_animal(shot_animal(b, chapters), name)]
+            if not hero:
+                log.warning("no HERO shots for %s; skipping", name)
+                continue
+            sets.append({"hero": hero, "aura": aura, "broll": broll, "animal": name})
+        if not sets:
+            raise MediaError("none of the selected animals has HERO footage")
+        n = len(sets)
+    else:
+        n = est["supported"] if count in ("as_many", "auto", None) else int(count)
+        if n <= 0:
+            n = 1 if est["hero_shots"] > 0 else 0
+        if n == 0:
+            raise MediaError("not enough HERO footage for an edit")
+        ok = [b for b in shots if not b.rejected and b.index not in banned and b.index not in used]
+        hero = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in ok if b.category == "hero"]
+        aura = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in ok if b.category == "aura"]
+        broll = [b.to_dict() for b in shots if not b.rejected and b.category == "broll" and b.index not in banned]
+        sets = partition_shots(hero, aura, broll, n)
     curve = MotionCurve.from_dict(json.loads((cache_dir_for(Path(doc.path)) / "motion.json").read_text()))
     pinfo = probe(bank["proxy"])
     src_aspect = pinfo.width / pinfo.height
@@ -189,12 +276,14 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
             progress(k / max(1, n), f"building edit {k + 1}/{n}")
         if not st["hero"]:
             continue
-        child = Project(name=f"{project.name} — edit {len(doc.edit_project_ids or []) + k + 1}", style=project.style if project.style != "showdown" else "phonk",
+        edit_animal = st.get("animal") or animal
+        child_name = f"{project.name} — {edit_animal}" if st.get("animal") else f"{project.name} — edit {len(doc.edit_project_ids or []) + k + 1}"
+        child = Project(name=child_name, style=project.style if project.style != "showdown" else "phonk",
                         aspect=project.aspect or "9:16", target_length=str(d_opts.get("target", 65)), mode=project.mode,
                         audio_export="silent" if project.audio_export == "original" else project.audio_export, song_path=project.song_path,
                         options={"intensity": (project.options or {}).get("intensity", "med"),
                                  "documentary_edit": {"documentary_id": doc.id, "parent": project.id, "index": k},
-                                 "title": f"THE {animal.upper()}" if animal and animal not in ("auto", "none", "", "any") else None})
+                                 "title": f"THE {edit_animal.upper()}" if edit_animal and edit_animal not in ("auto", "none", "", "any") else None})
         s.add(child)
         s.commit()
         s.refresh(child)
@@ -208,7 +297,7 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
                         thumb_path=b.thumb or None, duration=b.end, fps=doc.fps, width=doc.width, height=doc.height, has_audio=False,
                         description=b.caption or f"{b.category} shot at {int(b.start // 60)}:{int(b.start % 60):02d}", analyzed=True,
                         window_in=b.start, window_out=b.end, src_crop=(bank["crop"]["rect"] if bank["crop"].get("rect") else None),
-                        tags={"species": b.species or (animal if animal not in ("auto", "none", "", "any") else ""), "category": b.category,
+                        tags={"species": b.species or (edit_animal if edit_animal not in ("auto", "none", "", "any") else ""), "category": b.category,
                               "doc_shot_index": b.index, "film_time": b.start})
             s.add(clip)
             s.commit()

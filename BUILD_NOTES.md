@@ -53,7 +53,7 @@ Development machine: Windows 11, Python 3.12, Node 22, ffmpeg 9. Everything is c
 - Director chat: a Messages API agent loop with 20 tools (`list_clips`, `get_moments`,
   `look_at` frames at 2-4 fps, `set_order`, `insert_clip`, `remove_clip`, `set_clip_range`,
   `set_title`, `add_effect`, `remove_effect`, `toggle_effect`, `set_intensity`, `set_speed_ramp`,
-  `set_style`, `set_song_window`, `plan_auto`, `render_preview`, `undo`, `set_lock`), a clip
+  `set_style`, `set_song_window`, `plan_auto`, `render_preview`, `undo`, `set_lock`, `set_frame`), a clip
   reference resolver (numbers, labels, ids, descriptions), one EDL version per change, offline
   fallback ("undo", "clip 2 first, then clip 3").
 - Documentary mode: see its own section below.
@@ -119,6 +119,14 @@ filters / classification / two distinct edits.
 - Emoji outcome marker (☠️) renders with the system emoji font (Segoe UI Emoji on Windows, Apple
   Color Emoji on Mac); if none is found the marker is skipped.
 
+- Framing (added after Tim reviewed real exports): a 9:16 crop of a wide documentary shot can
+  look terrible, so each EDL clip takes an optional `frame` aspect (1.2, 4:3, 16:9 ...). The
+  renderer then draws the clip as a centered full-width box of that shape with black above and
+  below, keeping the tracked crop center and letting shake/zoom work inside the box; `None`
+  fills the canvas as before. Inspector "framing" select per clip, "apply to all" sets the
+  project default (`options.frame`, applied by the planner to every new clip), Director tool
+  `set_frame`. Hand-set framing on pinned clips survives re-plans (`carry_frame`).
+
 ## Documentary mode decisions
 
 - Shots are not extracted into files: a child edit project's clips point at the original film
@@ -144,6 +152,14 @@ filters / classification / two distinct edits.
   cuts and HERO/AURA moments are reused only if the pool runs out before the drop (noted).
   BROLL is used only in the intro and outro.
 - If HERO footage cannot cover the target, the edit is shortened and the note says why.
+- Compilations ("top 10 animal moments"): Tim's real upload mixed ten animals, and a bank-wide
+  edit opened on hermit crabs before the lion. The Documentary page now lists the animals found
+  in the bank (Claude's per-shot species, grouped) with HERO seconds each, and "Generate N animal
+  edits" builds one edit per ticked animal from that animal's shots only, titled "THE <ANIMAL>".
+  Species tags can wander (a hyena inside the lion segment), so Tim can paste chapter
+  timestamps ("3:12 emperor penguin", one per line); chapters override the tags for grouping,
+  and establishing BROLL is taken only from the same animal (no fallback to other chapters).
+  `PUT /documentary/chapters`, `POST /documentary/generate {animals: [...]}`.
 - Measured analysis on the synthetic 9.5-minute 960x540 film (Windows, 16 threads): letterbox
   2.4 s, proxy 39 s, shots 54 s, motion 113 s at 20 fps (now 12 fps for documentaries, roughly
   halving it), filters 18 s, classification with the fake client 3 s; about 0.3x to 0.4x of the
@@ -161,6 +177,9 @@ filters / classification / two distinct edits.
   shaped like the official API docs; the PRD's integration test ("search Pexels for cheetah
   running, import 6 clips") needs real keys.
 - Logos / watermarks are only caught through Claude's `has_text` tag.
+- Per-clip framing set in the Inspector on an unpinned clip is lost on Regenerate (the planner
+  re-picks unpinned clips); pin the clip or use "apply to all", which is stored as the project
+  default and survives.
 - RIFE interpolation is not integrated (ffmpeg minterpolate or frame blending only).
 - The Chase outcome "blur pass" is a horizontal motion blur, not a grass-specific effect.
 - Original-audio export approximates ramped clips with atempo.

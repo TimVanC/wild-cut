@@ -15,18 +15,49 @@ from sqlmodel import Session, select
 
 from wildcut import __version__
 from wildcut.config import get_settings
-from wildcut.db import BeatGrid, ChatMessage, Clip, Edl, Export, Job, LibraryClip, Moment as MomentRow, Project, get_session, now
+from wildcut.db import (
+    BeatGrid,
+    ChatMessage,
+    Clip,
+    Edl,
+    Export,
+    Job,
+    LibraryClip,
+    Project,
+    get_session,
+    now,
+)
+from wildcut.db import Moment as MomentRow
 from wildcut.media import MediaError
 from wildcut.planner import edl as edlmod
 from wildcut.planner.presets import list_presets, load_preset
 from wildcut.planner.showdown import blockers, list_layouts
 from wildcut.services import edl_ops
 from wildcut.services.jobs import enqueue
-from wildcut.services.planning import clip_infos, current_edl, load_moments, move_cursor, plan_project, save_edl_version
+from wildcut.services.planning import (
+    clip_infos,
+    current_edl,
+    load_moments,
+    move_cursor,
+    plan_project,
+    save_edl_version,
+)
 from wildcut.services.preview import changed_ranges
-from wildcut.services.projects import (add_clip_from_library, add_clip_from_path, delete_clip, is_audio_file, project_clips,
-                                       project_dir)
-from wildcut.stock.search import adapters, expand_queries, prescore, run_search, stock_status
+from wildcut.services.projects import (
+    add_clip_from_library,
+    add_clip_from_path,
+    delete_clip,
+    is_audio_file,
+    project_clips,
+    project_dir,
+)
+from wildcut.stock.search import (
+    adapters,
+    expand_queries,
+    prescore,
+    run_search,
+    stock_status,
+)
 
 app = FastAPI(title="Wild Cut", version=__version__)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -290,7 +321,7 @@ def stock_search(q: str, orientation: str | None = None, min_height: int = 720, 
     queries = expand_queries(q, chase_pairs=pairs_table(load_preset("chase"))) if expand else [q]
     try:
         results = run_search(queries, orientation, min_height, sources=adapters(), kind=kind)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(502, str(e)) from e
     if score:
         results = prescore(results)
@@ -482,7 +513,7 @@ def plan(project_id: str, body: PlanIn | None = None, s: Session = Depends(get_s
         seed = body.seed if body.seed is not None else (p.seed + 1 if body.keep_locks is not None and body.seed is None and current_edl(s, p) else p.seed)
         try:
             new = plan_project(s, p, seed=seed, keep_locks=body.keep_locks, note="regenerate" if current_edl(s, p) else "plan")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise HTTPException(400, f"planning failed: {e}") from e
     job = enqueue(s, p.id, "preview", {"version": new.version}) if body.preview else None
     return {"edl": new.json, "version": new.version, "job": job.model_dump() if job else None}
@@ -568,6 +599,14 @@ def edl_op(project_id: str, body: EdlOp, s: Session = Depends(get_session)) -> d
             note = edl_ops.set_speed_ramp(edl, a["item_id"], a.get("slow_rate", 0.4), a.get("peak"))
         elif body.op == "set_lock":
             note = edl_ops.set_lock(edl, a["item_id"], bool(a.get("locked", True)))
+        elif body.op == "set_frame":
+            note = edl_ops.set_frame(edl, a.get("item_id"), a.get("frame"))
+            if a.get("item_id") is None:
+                # "apply to all" is also the project default, so Regenerate keeps it
+                opts = dict(p.options or {})
+                opts["frame"] = edl_ops.parse_frame_arg(a.get("frame"))
+                p.options = opts
+                s.add(p)
         elif body.op == "remove_clip":
             note = edl_ops.remove_clip(edl, a["item_id"])
         elif body.op == "set_enabled":
@@ -698,7 +737,7 @@ def reveal(body: dict) -> dict:
             subprocess.Popen(["explorer", "/select,", str(path)])
         else:
             subprocess.Popen(["xdg-open", str(path.parent)])
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(500, str(e)) from e
     return {"ok": True}
 
@@ -898,15 +937,15 @@ def browse(path: str | None = None) -> dict:
 
 
 # documentary routes live in their own module
-from wildcut.api import documentary as _documentary_routes  # noqa: E402,F401
-
-
 # ---------------------------------------------------------------- server mode: access token + built frontend
-import os as _os  # noqa: E402
-from fastapi import Request as _Request  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from wildcut.config import REPO_ROOT as _ROOT  # noqa: E402
+import os as _os
+
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from wildcut.api import documentary as _documentary_routes  # noqa: F401
+from wildcut.config import REPO_ROOT as _ROOT
 
 _ACCESS_TOKEN = _os.environ.get("WILDCUT_ACCESS_TOKEN", "").strip()
 

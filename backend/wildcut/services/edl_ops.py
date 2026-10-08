@@ -5,6 +5,8 @@ choices are locked so Regenerate keeps them (the timeline shows a pin).
 """
 from __future__ import annotations
 
+from typing import Any
+
 from wildcut.analysis.moments import Moment
 from wildcut.analysis.tracking import crop_size
 from wildcut.planner import edl as edlmod
@@ -259,6 +261,35 @@ def set_speed_ramp(edl: dict, item_id: str, slow_rate: float | None = 0.4, peak:
         c["locked_range"] = True
     edlmod.relayout(edl)
     return msg
+
+
+FRAME_CHOICES = {"fill": None, "1.2:1": 1.2, "1:1": 1.0, "4:3": 4 / 3, "16:9": 16 / 9, "4:5": 0.8}
+
+
+def parse_frame_arg(frame: Any) -> float | None:
+    from wildcut.render.composer import parse_frame
+
+    if isinstance(frame, str) and frame in FRAME_CHOICES:
+        return FRAME_CHOICES[frame]
+    fa = parse_frame(frame)
+    if fa is not None and not (0.3 <= fa <= 4.0):
+        raise EdlOpError("frame aspect must be between 0.3 and 4")
+    return fa
+
+
+def set_frame(edl: dict, item_id: str | None, frame: Any) -> str:
+    """Per-clip framing: None = crop to fill the canvas; a w/h aspect (1.2, "16:9") = centered box with
+    black above/below. item_id None applies it to every clip in the edit."""
+    fa = parse_frame_arg(frame)
+    label = "fill" if fa is None else f"{fa:.2f}:1"
+    if item_id is None:
+        for c in edl["clips"]:
+            if c.get("kind") != "card":
+                c["frame"] = fa
+        return f"framed every clip {label}"
+    c = _clip(edl, item_id)
+    c["frame"] = fa
+    return f"framed {c.get('label', c['id'])} {label}"
 
 
 def set_lock(edl: dict, item_id: str, locked: bool) -> str:
