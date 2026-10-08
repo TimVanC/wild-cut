@@ -209,6 +209,25 @@ filters / classification / two distinct edits.
   clips), beat-locked build, the hero on the drop (38.995 s), post on downbeats, outro; zero
   HERO/AURA shots shared between the two edits; both open in the editor with Director chat.
 
+## Server deployment (Railway)
+
+- Project `wild-cut` in Tim's Railway workspace, service `wild-cut` built from `TimVanC/wild-cut`
+  (main) with the root Dockerfile; public URL https://wild-cut-production.up.railway.app.
+- One container runs the worker (supervised child) and the API, which serves the built React app.
+  A 5 GB-class volume is mounted at `/app/data` (SQLite, proxies, chunks, previews, exports,
+  inbox). Variables: the Claude key + workspace id, model, budgets, `PORT=8787`,
+  `DATA_DIR=/app/data`, `INBOX_DIR=/app/data/inbox`, `EXPORTS_DIR=/app/data/exports`, and
+  `WILDCUT_ACCESS_TOKEN` (the UI asks for it once; it is in the Railway service variables).
+- Railway rejects a Dockerfile with a `VOLUME` instruction; the volume is attached by the
+  platform instead. A push to main deploys automatically.
+- On the server, footage comes in by browser upload (the Footage tab or the Director chat), by
+  stock import, or by files placed in the inbox on the volume; "add by path" only sees the
+  container's filesystem. Exports are downloaded from the export dialog's player
+  (right-click, save) or via `/api/media?path=...` with the token cookie.
+- Verified live: health check, token guard (401 without it), UI token gate, and an upload of two
+  synthetic clips followed by analysis and planning inside the container (ffmpeg, OpenCV,
+  librosa all working on the Railway image).
+
 ## What Tim should test first with real footage and a real phonk track
 
 1. Put a workspace-scoped Anthropic key in `.env` (or add `ANTHROPIC_WORKSPACE_ID` next to the
