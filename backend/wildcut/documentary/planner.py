@@ -111,6 +111,8 @@ class DocumentaryPlanner(Planner):
         req, grid = self.req, self.req.grid
         if not grid or not grid.beats:
             return super().plan_music()
+        self._avoid_early_drop()
+        grid = self.req.grid
         period = grid.beat_period()
         bar = 4 * period
         # intro: 1-2 bars of BROLL then an AURA reveal (1 bar), total 3-8 s
@@ -157,6 +159,29 @@ class DocumentaryPlanner(Planner):
                 c["locked_order"] = False
         self.edl["sections"] = [{"name": "intro", "start": 0.0, "end": round(intro_len, 3)}] + [
             s for s in self.edl["sections"]]
+
+    MIN_DROP_OFFSET = 16.0   # intro (3-8 s) plus a real build before the drop
+
+    def _avoid_early_drop(self) -> None:
+        """A drop detected in the first seconds of the song leaves no room for intro + build: prefer the
+        next candidate that sits at least MIN_DROP_OFFSET s into the song, or note the problem."""
+        import copy
+
+        grid = self.req.grid
+        if grid.chosen_drop is None or self.req.song_window or (self.existing or {}).get("audio", {}).get("window_locked"):
+            return
+        if grid.chosen_drop >= self.MIN_DROP_OFFSET:
+            return
+        later = [c for c in grid.drop_candidates if c["t"] >= self.MIN_DROP_OFFSET and c["score"] >= 0.2]
+        if later:
+            g = copy.deepcopy(grid)
+            g.chosen_drop = later[0]["t"]
+            self.req.grid = g
+            self.notes.append(f"The strongest drop is only {grid.chosen_drop:.1f}s into the song; used the drop candidate at "
+                              f"{later[0]['t']:.1f}s so the edit has an intro and a build. Override on the Music tab if you want the early one.")
+        else:
+            self.notes.append(f"The drop is only {grid.chosen_drop:.1f}s into the song, so the intro runs straight into it. "
+                              f"Pick a later drop candidate on the Music tab for a longer build.")
 
     def plan_visual(self) -> None:
         self.category_pref, self.category_exclude = ["broll"], set()
