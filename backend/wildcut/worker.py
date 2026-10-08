@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlmodel import Session
 
 from wildcut.config import get_settings
-from wildcut.db import Project, get_engine
+from wildcut.db import Job, Project, get_engine
 from wildcut.services.jobs import claim_next, enqueue, recover_stale, run_job
 from wildcut.services.projects import add_clip_from_path, is_media_file
 from wildcut.stock.library import add_local_to_library
@@ -102,9 +102,22 @@ def main(poll: float = 0.5, once: bool = False) -> None:
                 last_recover = time.time()
             job = claim_next(s)
             if job is not None:
-                log.info("job %s %s start", job.id, job.kind)
-                run_job(s, job)
-                log.info("job %s %s %s", job.id, job.kind, job.status)
+                jid, jkind = job.id, job.kind
+                log.info("job %s %s start", jid, jkind)
+                try:
+                    run_job(s, job)
+                    log.info("job %s %s %s", jid, jkind, job.status)
+                except Exception as e:  # noqa: BLE001  (run_job handles job errors; this guards the worker itself)
+                    log.error("job %s %s crashed the handler: %s", jid, jkind, e)
+                    try:
+                        s.rollback()
+                        row = s.get(Job, jid)
+                        if row is not None and row.status == "running":
+                            row.status, row.error = "error", str(e)[:2000]
+                            s.add(row)
+                            s.commit()
+                    except Exception:  # noqa: BLE001
+                        pass
                 continue
             if time.time() - last_inbox > 2.0:
                 try:

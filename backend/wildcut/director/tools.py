@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -356,6 +357,39 @@ def t_set_speed_ramp(ctx: Context, clip: Any, slow_rate: float | None = 0.4, sou
     return {"ok": True, "note": note}
 
 
+def t_set_hero(ctx: Context, clip: Any, source_time: float, **_) -> dict:
+    """Make the moment at a source time the hero (it lands on the drop); creates a moment there if none was detected."""
+    from wildcut.analysis.moments import Moment as MomentData
+    from wildcut.db import Moment as MomentRow
+
+    c = resolve_clip(ctx, clip)
+    t = float(source_time)
+    if not (0 <= t <= c.duration + 1e-6):
+        raise ToolError(f"{c.label} is only {c.duration:.1f}s long")
+    near = [m for m in ctx.moments if m.clip_id == c.id and abs(m.peak_t - t) <= 1.5]
+    if near:
+        m = min(near, key=lambda m: abs(m.peak_t - t))
+    else:
+        in_t, out_t = max(0.0, t - 1.5), min(c.duration, t + 1.5)
+        m = MomentData(id=uuid.uuid4().hex[:12], clip_id=c.id, in_t=in_t, out_t=out_t, peak_t=t, motion_score=0.8, score=0.9,
+                       action="tim's pick", caption_hint=f"Tim's moment at {t:.1f}s", kind="user", shot_start=in_t, shot_end=out_t)
+        ctx.s.add(MomentRow(id=m.id, project_id=ctx.project.id, clip_id=c.id, in_t=in_t, out_t=out_t, peak_t=t, motion_score=0.8,
+                            caption_hint=m.caption_hint, action=m.action, kind="user", score=0.9, starred=True))
+        ctx.s.commit()
+        ctx.moments.append(m)
+    hero = next((x for x in ctx.edl["clips"] if x.get("role") == "hero"), None)
+    if hero is None:
+        raise ToolError("this edit has no hero slot yet; run plan_auto first")
+    note = edl_ops.swap_moment(ctx.edl, hero["id"], m, ctx.infos[c.id])
+    hero["anchor"] = "drop"
+    opts = dict(ctx.project.options or {})
+    opts["starred_moments"] = sorted(set(opts.get("starred_moments", [])) | {m.id})
+    ctx.project.options = opts
+    ctx.s.add(ctx.project)
+    ctx.commit(f"hero: {c.label} at {t:.1f}s")
+    return {"ok": True, "note": note, "hero_item": hero["id"], "edit": summarize_edit(ctx)}
+
+
 def t_set_frame(ctx: Context, frame: Any, clip: Any = None, **_) -> dict:
     if clip in (None, "", "all"):
         note = edl_ops.set_frame(ctx.edl, None, frame)
@@ -458,6 +492,8 @@ TOOL_IMPLS = {
     "set_intensity": t_set_intensity, "set_speed_ramp": t_set_speed_ramp, "set_style": t_set_style,
     "set_song_window": t_set_song_window, "plan_auto": t_plan_auto, "render_preview": t_render_preview, "undo": t_undo,
     "set_lock": t_set_lock,
+    "set_frame": t_set_frame,
+    "set_hero": t_set_hero,
 }
 
 _CLIP = {"type": ["string", "integer"], "description": "clip number (2), label ('Clip 2'), clip id, or a short description ('the falcon one')"}
@@ -478,6 +514,7 @@ TOOLS: list[dict] = [
     {"name": "toggle_effect", "description": "Enable or disable one effect.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["effect_id", "enabled"]}},
     {"name": "set_intensity", "description": "Set effect intensity (low/med/high) for one effect or all effects.", "input_schema": {"type": "object", "properties": {"intensity": {"type": "string", "enum": ["low", "med", "high"]}, "effect_id": {"type": "string"}}, "required": ["intensity"]}},
     {"name": "set_speed_ramp", "description": "Put a slow-motion ramp on a clip around a source time (slow_rate 0.3-0.7), or remove it (slow_rate null/1).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "slow_rate": {"type": ["number", "null"]}, "source_time": {"type": "number"}}, "required": ["clip"]}},
+    {"name": "set_hero", "description": "Make the moment at a source time of a clip the hero: it is placed so its peak lands on the drop (or the visual payoff) with the slow-mo ramp, and it is pinned. Use for the moment Tim calls the biggest / the payoff / 'the drop should hit when...'. Creates the moment if analysis did not detect one there.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}}, "required": ["clip", "source_time"]}},
     {"name": "set_frame", "description": "How a clip sits in the vertical canvas. 'fill' crops it to fill the whole frame (default). An aspect such as '1.2:1', '4:3' or '16:9' shows the clip as a centered box of that shape at full width with black above and below, which suits wide shots that crop badly to 9:16. Omit clip (or 'all') to apply to every clip and make it the project default.", "input_schema": {"type": "object", "properties": {"frame": {"type": "string", "description": "'fill', '1.2:1', '1:1', '4:3', '16:9', or a w/h number as text"}, "clip": _CLIP}, "required": ["frame"]}},
     {"name": "set_style", "description": "Switch the style preset (phonk, cinematic, chase) and optionally the aspect; re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"style": {"type": "string"}, "aspect": {"type": "string", "enum": ["9:16", "1:1", "4:5", "3:4"]}}, "required": ["style"]}},
     {"name": "set_song_window", "description": "Choose which part of the song the edit uses (seconds in the song file); re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}, "required": ["start", "end"]}},

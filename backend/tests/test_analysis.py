@@ -116,3 +116,18 @@ def test_subject_stays_in_frame_static_clip(assets):
             assert point_in_crop(cp, m.peak_t, gt_pos[key]["x"], gt_pos[key]["y"], margin=0.02)
         checked += 1
     assert checked == 2
+
+
+def test_moment_ids_are_unique_even_with_a_shared_peak_time():
+    """Two 'shot' moments can share a peak time (a cut right at the peak); their ids must still differ."""
+    from wildcut.analysis.motion import MotionCurve
+
+    n = 60
+    times = [i * 0.1 for i in range(n)]
+    curve = MotionCurve(times=times, subject=[0.02] * n, camera=[0.0] * n, boxes=[None] * n)
+    shots = [Shot(start=0.0, end=4.32), Shot(start=4.32, end=5.9)]
+    ms = build_moments("clip", shots, curve, 16 / 9)
+    assert ms and len(ms) == len({m.id for m in ms})
+    # the same inputs give the same ids (determinism), different ranges give different ids
+    again = build_moments("clip", shots, curve, 16 / 9)
+    assert [m.id for m in ms] == [m.id for m in again]

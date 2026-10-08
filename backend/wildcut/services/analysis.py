@@ -116,18 +116,36 @@ def analyze_song(s: Session, project: Project, progress: Progress | None = None)
 def analyze_project(s: Session, project: Project, progress: Progress | None = None, only_unanalyzed: bool = True) -> None:
     clips = project_clips(s, project.id)
     todo = [c for c in clips if not (only_unanalyzed and c.analyzed and c.proxy_path and Path(c.proxy_path).exists())]
-    n = len(todo) + (1 if project.mode == "music" and project.song_path else 0)
+    has_song = bool(project.mode == "music" and project.song_path)
+    n = len(todo) + (1 if has_song else 0)
     done = 0
+    # two visible stages: the video (all clips) and the song, each with its own progress
+    stages: dict[str, dict] = {}
+    if todo:
+        stages["video"] = {"progress": 0.0, "message": f"{len(todo)} clip(s) to analyze", "state": "pending"}
+    if has_song:
+        stages["song"] = {"progress": 0.0, "message": "waiting for the video", "state": "pending"}
+
+    def emit(p: float, msg: str) -> None:
+        if not progress:
+            return
+        try:
+            progress(p, msg, stages=stages)
+        except TypeError:          # plain (p, msg) callbacks
+            progress(p, msg)
+
     for c in todo:
         def sub(p: float, msg: str, _done=done) -> None:
-            if progress:
-                progress((_done + p) / max(1, n), msg)
+            stages["video"] = {"progress": round((_done + p) / max(1, len(todo)), 3), "message": msg, "state": "running"}
+            emit((_done + p) / max(1, n), msg)
         analyze_clip(s, project, c, sub)
         done += 1
-    if project.mode == "music" and project.song_path:
+    if todo:
+        stages["video"] = {"progress": 1.0, "message": "done", "state": "done"}
+    if has_song:
         def sub2(p: float, msg: str) -> None:
-            if progress:
-                progress((done + p) / max(1, n), msg)
+            stages["song"] = {"progress": round(p, 3), "message": msg, "state": "done" if p >= 1 else "running"}
+            emit((done + p) / max(1, n), msg)
         analyze_song(s, project, sub2)
     project.status = "analyzed"
     project.progress = 1.0

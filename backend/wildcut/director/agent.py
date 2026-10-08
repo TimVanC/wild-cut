@@ -33,6 +33,7 @@ Rules:
 - Anything Tim specifies is locked; call plan_auto(scope="fill") afterwards when Tim asks to fill in the rest or when the edit would otherwise be incomplete.
 - Music terms resolve against the beat grid: "the drop", "second bass hit" = bass_hit:2, "third downbeat" = downbeat:3.
 - "undo that" = the undo tool.
+- A message starting with "BRIEF:" is the direction Tim wrote before the first edit was built. An auto edit already exists; apply every concrete instruction in it with tools: the moments he names with timestamps (source times in the clip, "1:42" = 102 s) via set_hero for the biggest one, set_clip_range / insert_clip / set_order for the others; the title via set_title; the mood via set_style, set_intensity and set_frame; parts to avoid via remove_clip. Use look_at when a description needs checking. Leave what the brief does not mention to the auto edit. Finish with plan_auto(scope="fill") and a short summary of what you placed where.
 - After the changes, reply with one or two short lines summarizing exactly what you did (and the resulting order or time when relevant). No preamble, no questions unless something is ambiguous.
 """
 

@@ -55,6 +55,10 @@ def test_full_flow_music_phonk(client, assets, tmp_path):
     hero = next(c for c in edl["clips"] if c["role"] == "hero")
     assert abs(edl["markers"]["hero_peak"] - edl["markers"]["drop"]) <= 1 / 30
     assert edl["audio"]["sound_offset"] == edl["audio"]["song_window"]["start"]
+    # the analyze job reports the video and the song as separate stages
+    an_job = next(j for j in client.get(f"/api/projects/{pid}/jobs").json() if j["kind"] == "analyze")
+    assert an_job["stages"]["video"]["state"] == "done" and an_job["stages"]["song"]["state"] == "done", an_job["stages"]
+    assert an_job["stages"]["video"]["progress"] == 1.0
     # preview was rendered by the analyze->plan->preview chain
     pv = client.get(f"/api/projects/{pid}/preview").json()
     assert pv["ready"] and pv["url"].startswith("/api/media?path=")
@@ -234,3 +238,80 @@ def test_config_and_stock_status(client):
     assert r.status_code in (200, 400)
     if r.status_code == 400:
         assert "API_KEY" in r.text
+
+
+def test_brief_goes_to_the_director_after_the_first_plan(client, assets):
+    """A brief written before the first edit is handed to the Director (when Claude is on), exactly once."""
+    from wildcut.claude import ClaudeClient, set_client_for_tests
+    from wildcut.db import get_engine
+    from wildcut.services.jobs import claim_next, run_job
+
+    set_client_for_tests(ClaudeClient(api_key="", model="x"))     # Claude off (the dev .env would enable it)
+    pid = client.post("/api/projects", json={"name": "brief", "style": "phonk", "aspect": "9:16", "target_length": "15", "mode": "visual",
+                                             "options": {"brief": "open on the snakes, title THE IGUANA"}}).json()["id"]
+    client.post(f"/api/projects/{pid}/clips", json={"path": str(Path(assets["dir"]) / assets["clips"]["clip_a"]["path"])})
+    # Claude off: no chat job, the preview runs straight away
+    client.post(f"/api/projects/{pid}/analyze")
+    run_pending()
+    kinds = [j["kind"] for j in client.get(f"/api/projects/{pid}/jobs").json()]
+    assert "chat" not in kinds and "preview" in kinds
+
+    def run_one() -> None:   # run the next analyze job; brief chat jobs are left unrun (they need a real client)
+        with Session(get_engine()) as s:
+            while True:
+                job = claim_next(s)
+                assert job is not None
+                if job.kind == "chat":
+                    job.status = "cancelled"
+                    s.add(job)
+                    s.commit()
+                    continue
+                assert job.kind == "analyze"
+                run_job(s, job)
+                break
+
+    set_client_for_tests(ClaudeClient(api_key="sk-ant-test", model="x"))
+    try:
+        client.post(f"/api/projects/{pid}/analyze")
+        run_one()
+        chats = [j for j in client.get(f"/api/projects/{pid}/jobs").json() if j["kind"] == "chat"]
+        assert len(chats) == 1 and chats[0]["payload"]["brief"] and chats[0]["payload"]["message"].startswith("BRIEF:")
+        assert "open on the snakes" in chats[0]["payload"]["message"]
+        client.post(f"/api/projects/{pid}/analyze")   # a second plan must not queue the brief again
+        run_one()
+        chats = [j for j in client.get(f"/api/projects/{pid}/jobs").json() if j["kind"] == "chat"]
+        assert len(chats) == 1
+    finally:
+        set_client_for_tests(None)
+
+
+def test_failed_job_does_not_poison_the_session_or_restart_forever(client):
+    """A handler that fails inside a flush must leave the job in error (not kill the worker), and a job that
+    keeps dying is given up after MAX_RESTARTS instead of being re-queued forever."""
+    from wildcut.db import Job, get_engine
+    from wildcut.db import Moment as MomentRow
+    from wildcut.services import jobs as jobsmod
+    from wildcut.services.jobs import handler, recover_stale, run_job
+
+    @handler("boom_test")
+    def _boom(s, job, progress):
+        s.add(MomentRow(id="dup", project_id="x", clip_id="c", in_t=0, out_t=1, peak_t=0.5))
+        s.add(MomentRow(id="dup", project_id="x", clip_id="c", in_t=0, out_t=1, peak_t=0.5))
+        s.commit()
+
+    try:
+        with Session(get_engine()) as s:
+            job = Job(project_id="x", kind="boom_test", status="running")
+            s.add(job)
+            s.commit()
+            run_job(s, job)                      # must not raise
+            s.refresh(job)
+            assert job.status == "error" and "UNIQUE" in job.error
+            dead = Job(project_id="x", kind="analyze", status="running", payload={"_restarts": jobsmod.MAX_RESTARTS})
+            s.add(dead)
+            s.commit()
+            assert recover_stale(s, all_running=True) == 1
+            s.refresh(dead)
+            assert dead.status == "error" and "gave up" in dead.error
+    finally:
+        jobsmod.HANDLERS.pop("boom_test", None)

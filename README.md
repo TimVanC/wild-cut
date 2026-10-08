@@ -48,6 +48,8 @@ runs (motion-only tags, placeholder title, offline Director commands) and the UI
   chapter timestamps ("3:12 emperor penguin") when the species tags are not enough.
 - **Framing**: select a clip in the editor and pick "fill the frame" or a centered box (1.2:1, 4:3, 16:9) with black
   above and below; "apply to all" makes it the project default. Or tell the Director: "show the lion clip 16:9".
+- **Brief**: on the Footage page, write your vision and the moments that matter with timestamps before clicking
+  Analyze; the auto edit is built, then the Director applies your brief, and you keep directing in the editor.
 - **Director chat** in the editor: "clip 2 first, title when it lets go of the branch, then clip 3". Anything you
   specify is pinned and survives Regenerate.
 

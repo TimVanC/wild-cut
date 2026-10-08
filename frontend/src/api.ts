@@ -32,7 +32,8 @@ export type Edl = {
   sections: { name: string; start: number; end: number }[]; notes: string[]; title: string | null; showdown: any; chase: any
 }
 export type EdlResponse = { edl: Edl; version: number; note?: string; versions: number[]; can_undo: boolean; can_redo: boolean }
-export type Job = { id: string; project_id: string; kind: string; status: string; progress: number; message: string; error: string; result: any; payload: any }
+export type Stage = { progress: number; message: string; state: 'pending' | 'running' | 'done' }
+export type Job = { id: string; project_id: string; kind: string; status: string; progress: number; message: string; error: string; result: any; payload: any; stages?: Record<string, Stage> }
 export type BeatGrid = { tempo: number; duration: number; beats: number[]; downbeats: number[]; bass_hits: number[]; drop_candidates: { t: number; score: number }[]; chosen_drop: number | null; waveform: number[] }
 export type ExportRow = { id: string; path: string; url: string; settings: any; sound_offset: number | null; edl_version: number; created_at: string; caption: string; credits_path: string; caption_path: string }
 export type StockResult = { key: string; source: string; id: string; width: number; height: number; duration: number; thumbnail_url: string; preview_url: string; page_url: string; credit: string; license: string; query: string; score: number | null; orientation: string; in_library: string | null; kind: string }

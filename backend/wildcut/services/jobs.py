@@ -35,6 +35,7 @@ def enqueue(s: Session, project_id: str, kind: str, payload: dict | None = None)
 
 
 STALE_RUNNING_SECONDS = 15 * 60
+MAX_RESTARTS = 2
 
 
 def recover_stale(s: Session, max_age: float = STALE_RUNNING_SECONDS, all_running: bool = False) -> int:
@@ -49,8 +50,21 @@ def recover_stale(s: Session, max_age: float = STALE_RUNNING_SECONDS, all_runnin
     for job in rows:
         upd = job.updated_at if job.updated_at.tzinfo else job.updated_at.replace(tzinfo=cutoff.tzinfo)
         if all_running or upd < cutoff:
-            job.status = "queued"
-            job.message = "restarted after the worker stopped"
+            restarts = int((job.payload or {}).get("_restarts", 0)) + 1
+            job.payload = dict(job.payload or {}, _restarts=restarts)
+            if restarts > MAX_RESTARTS:
+                # a job that keeps killing the worker is a bug, not bad luck: stop re-running it
+                job.status = "error"
+                job.error = f"gave up after {restarts - 1} restarts (the worker stopped each time); check the server log"
+                job.message = job.error
+                p = s.get(Project, job.project_id) if job.project_id else None
+                if p is not None:
+                    p.status = "error"
+                    p.message = f"{job.kind} failed: {job.error}"
+                    s.add(p)
+            else:
+                job.status = "queued"
+                job.message = "restarted after the worker stopped"
             job.updated_at = now()
             s.add(job)
             n += 1
@@ -73,11 +87,14 @@ def claim_next(s: Session) -> Job | None:
 
 def run_job(s: Session, job: Job) -> None:
     fn = HANDLERS.get(job.kind)
+    jid, jkind = job.id, job.kind          # plain values: the ORM object is unusable after a failed flush
     project = s.get(Project, job.project_id) if job.project_id else None
 
-    def progress(p: float, msg: str = "") -> None:
+    def progress(p: float, msg: str = "", stages: dict | None = None) -> None:
         job.progress = round(float(p), 4)
         job.message = msg or job.message
+        if stages is not None:
+            job.stages = dict(stages)
         job.updated_at = now()
         s.add(job)
         if project is not None:
@@ -109,17 +126,21 @@ def run_job(s: Session, job: Job) -> None:
             s.add(project)
         s.commit()
     except Exception as e:  # noqa: BLE001
-        log.error("job %s %s failed: %s\n%s", job.id, job.kind, e, traceback.format_exc())
-        s.rollback()
-        job = s.get(Job, job.id) or job
+        tb = traceback.format_exc()
+        s.rollback()                        # first: after a failed flush the session refuses every attribute load
+        log.error("job %s %s failed: %s\n%s", jid, jkind, e, tb)
+        job = s.get(Job, jid)
+        if job is None:
+            return
         job.status = "error"
         job.error = str(e)[:2000]
         job.updated_at = now()
         s.add(job)
+        pid = job.project_id
+        project = s.get(Project, pid) if pid else None
         if project is not None:
-            project = s.get(Project, project.id) or project
             project.status = "error"
-            project.message = f"{job.kind} failed: {str(e)[:300]}"
+            project.message = f"{jkind} failed: {str(e)[:300]}"
             s.add(project)
         s.commit()
 
@@ -135,9 +156,12 @@ def _analyze(s: Session, job: Job, progress) -> dict:
         # a new song never needs the clips re-analyzed
         from wildcut.services.analysis import analyze_song
 
-        progress(0.05, "analyzing the song")
-        analyze_song(s, project, progress)
-        progress(1.0, "music: done")
+        def song_progress(p: float, msg: str) -> None:
+            progress(p, msg, stages={"song": {"progress": round(p, 3), "message": msg, "state": "done" if p >= 1 else "running"}})
+
+        song_progress(0.05, "music: beats and drop")
+        analyze_song(s, project, song_progress)
+        song_progress(1.0, "music: done")
         return {}
     analyze_project(s, project, progress, only_unanalyzed=not job.payload.get("force"))
     if job.payload.get("then_plan", True):
@@ -145,9 +169,28 @@ def _analyze(s: Session, job: Job, progress) -> dict:
 
         progress(0.98, "planning")
         row = plan_project(s, project, keep_locks=bool(job.payload.get("keep_locks", True)))
-        enqueue(s, project.id, "preview", {"version": row.version})
+        brief = str((project.options or {}).get("brief") or "").strip()
+        if brief and _brief_pending(s, project):
+            # Tim's direction, given before the first edit: the Director applies it to the auto plan
+            enqueue(s, project.id, "chat", {"message": "BRIEF:" + chr(10) + brief, "then_preview": True, "brief": True})
+        else:
+            enqueue(s, project.id, "preview", {"version": row.version})
         return {"edl_version": row.version}
     return {}
+
+
+def _brief_pending(s: Session, project: Project) -> bool:
+    """The brief is applied once, by the first plan, and only when the Director can run."""
+    from wildcut.claude import get_client
+    from wildcut.db import ChatMessage
+
+    if not get_client().enabled:
+        return False
+    rows = s.exec(select(ChatMessage).where(ChatMessage.project_id == project.id)).all()
+    if any((r.content or "").startswith("BRIEF:") for r in rows):
+        return False
+    queued = s.exec(select(Job).where(Job.project_id == project.id, Job.kind == "chat")).all()
+    return not any((j.payload or {}).get("brief") for j in queued)
 
 
 @handler("plan")

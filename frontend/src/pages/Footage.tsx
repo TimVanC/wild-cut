@@ -3,11 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { abs, api, fileUrl, isRemote, type Clip, type StockResult } from '../api'
 import FileBrowser from '../components/FileBrowser'
+import StageProgress from '../components/StageProgress'
+import { useEvents } from '../hooks/useEvents'
 
 export default function Footage() {
   const { id } = useParams()
   const pid = id!
   const qc = useQueryClient()
+  const snap = useEvents(pid)
+  const [brief, setBrief] = useState<string | null>(null)
   const nav = useNavigate()
   const cfg = useQuery({ queryKey: ['config'], queryFn: api.config })
   const project = useQuery({ queryKey: ['project', pid], queryFn: () => api.project(pid) })
@@ -28,7 +32,11 @@ export default function Footage() {
   const addLib = useMutation({ mutationFn: (lid: string) => api.addFromLibrary(pid, lid), onSuccess: invalidate })
   const search = useMutation({ mutationFn: () => api.stockSearch(q, orientation || undefined), onError: (e: Error) => setErr(e.message) })
   const importStock = useMutation({ mutationFn: () => api.stockImport(pid, Object.values(picked)), onSuccess: () => { setPicked({}); invalidate() } })
-  const analyze = useMutation({ mutationFn: () => api.analyze(pid, true), onSuccess: () => { invalidate(); nav(`/p/${pid}/${project.data?.mode === 'music' && !project.data.song_path ? 'music' : 'editor'}`) }, onError: (e: Error) => setErr(e.message) })
+  const saveBrief = useMutation({ mutationFn: (text: string) => api.patchProject(pid, { options: { brief: text } } as any), onSuccess: invalidate })
+  const analyze = useMutation({
+    mutationFn: async () => { if (brief !== null && brief !== (project.data?.options?.brief ?? '')) await saveBrief.mutateAsync(brief); return api.analyze(pid, true) },
+    onSuccess: () => { invalidate(); nav(`/p/${pid}/${project.data?.mode === 'music' && !project.data.song_path ? 'music' : 'editor'}`) }, onError: (e: Error) => setErr(e.message),
+  })
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) upload.mutate(files) }
   const stockOn = cfg.data?.stock.enabled
 
@@ -91,6 +99,11 @@ export default function Footage() {
         {clips.data?.map(c => <ClipRow key={c.id} c={c} pid={pid} onRemove={() => remove.mutate(c.id)} />)}
         {clips.data?.length === 0 && <div className="muted text-sm">No clips yet.</div>}
         <div className="mt-auto flex flex-col gap-2">
+          <label className="label">Direct the editor first (optional)</label>
+          <textarea className="input text-sm" rows={6} value={brief ?? (project.data?.options?.brief ?? '')} onChange={e => setBrief(e.target.value)} onBlur={() => { if (brief !== null) saveBrief.mutate(brief) }}
+            placeholder={'Your vision and the moments that matter, with timestamps in the clip:\n- the drop should hit when the iguana breaks free at 2:41\n- open on the snakes creeping at 0:35\n- title: THE IGUANA\n- dark, fast, no flashes'} />
+          <div className="text-xs muted">The auto edit is built first, then the Director applies this brief and you keep directing it in the editor chat.</div>
+          <StageProgress snap={snap} />
           {project.data?.mode === 'music' && !project.data.song_path && <div className="text-xs muted">Music-synced project: add the song on the Music tab before or after analysis.</div>}
           <button className="btn btn-primary" disabled={!clips.data?.length || analyze.isPending} onClick={() => analyze.mutate()}>Analyze footage and build the edit</button>
           <div className="text-xs muted">Shot detection, motion scoring, subject tracking, Claude tags, then the auto edit.</div>

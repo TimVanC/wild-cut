@@ -857,7 +857,7 @@ def _snapshot(s: Session, project_id: str) -> dict:
     return {"project": {"id": p.id, "status": p.status, "progress": p.progress, "message": p.message, "updated_at": str(p.updated_at),
                         "claude_spend_usd": p.claude_spend_usd, "song_path": p.song_path},
             "jobs": [{"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress, "message": j.message, "error": j.error,
-                      "result": j.result} for j in jobs],
+                      "result": j.result, "stages": j.stages or {}, "payload": j.payload or {}} for j in jobs],
             "edl_version": edl.version if edl else None, "chat_count": len(chat_n)}
 
 

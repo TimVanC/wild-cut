@@ -174,6 +174,24 @@ filters / classification / two distinct edits.
   clip analysis before the song (Tim waited 8 minutes on "Analyzing beats"); `only_song` now runs
   just the beat analysis. A worker replaced during a deploy left its job "running" forever;
   the worker re-queues running jobs at startup and any job silent for 15 minutes.
+- Brief before the first edit (Tim: "I want to direct the AI on my vision and timestamps before it
+  creates the edit"): the Footage page has a "Direct the editor first" box saved as
+  `options.brief`. The analyze job builds the auto edit as before, then, when Claude is on, hands
+  the brief to the Director as its first message ("BRIEF: ...", once) instead of a plain preview;
+  the Director applies it with tools and previews. New tool `set_hero(clip, source_time)` makes
+  the moment at a timestamp the hero on the drop, creating a user moment when analysis found none
+  there (also the natural tool for "the drop should hit when..."). Found while wiring this:
+  `set_frame` was never registered in TOOL_IMPLS, so the Director could not call it; fixed.
+- Separate progress for the video and the song: the analyze job carries `stages`
+  ({video, song} with progress / message / state) and the Footage, Music and Editor pages show
+  one bar per stage (StageProgress), with "Queued behind another job" when the worker is busy.
+- Crash loop found on Tim's iguana clip: two "shot" moments shared a peak time, so their
+  deterministic ids (clip + peak + kind) collided, the insert failed, the error handler read the
+  job row from a session that was already rolled back (PendingRollbackError) and the worker
+  process died; the new startup recovery then re-queued the same job and it looped, spending on
+  Claude each time. Fixes: moment ids include the range and are deduplicated; the job error
+  handler rolls back first and works from plain ids; the worker loop survives a crashing
+  handler; a job restarted more than MAX_RESTARTS (2) times is marked error instead of re-queued.
 - Previews were concatenated video-only, so the editor played silent even with a song attached;
   the song window is muxed into every preview now (exports still follow the audio setting).
 - Determinism fix found while testing this: planner jitter was assigned in moment-id order, and

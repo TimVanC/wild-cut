@@ -4,11 +4,14 @@ import { useParams } from 'react-router-dom'
 import WaveSurfer from 'wavesurfer.js'
 import { abs, api, fmtShort, isRemote, type BeatGrid } from '../api'
 import FileBrowser from '../components/FileBrowser'
+import StageProgress from '../components/StageProgress'
+import { useEvents } from '../hooks/useEvents'
 
 export default function Music() {
   const { id } = useParams()
   const pid = id!
   const qc = useQueryClient()
+  const snap = useEvents(pid)
   const project = useQuery({ queryKey: ['project', pid], queryFn: () => api.project(pid) })
   const grid = useQuery({ queryKey: ['beatgrid', pid], queryFn: () => api.beatgrid(pid), retry: false, refetchInterval: (q) => (q.state.data ? false : 2000) })
   const [path, setPath] = useState('')
@@ -48,7 +51,7 @@ export default function Music() {
           {p?.song_window && <span className="muted">Window {fmtShort(p.song_window.start)} – {fmtShort(p.song_window.end)} · sound offset <b style={{ color: 'var(--accent)' }}>{fmtShort(p.song_window.start)}</b></span>}
         </div>
       </div>
-      {p?.song_path && !grid.data && <div className="card p-4 muted text-sm">Analyzing beats, bass hits and the drop…</div>}
+      {p?.song_path && !grid.data && (snap?.jobs.some(j => j.status === 'running' || j.status === 'queued') ? <StageProgress snap={snap} /> : <div className="card p-4 muted text-sm">Analyzing beats, bass hits and the drop…</div>)}
       {p?.song_url && grid.data && (
         <Waveform url={abs(p.song_url)} grid={grid.data} window={p.song_window} targetLen={targetLen}
           onWindow={(s, e) => setWindow.mutate({ start: s, end: e, locked: true })} onDrop={(t) => setDrop.mutate(t)} />

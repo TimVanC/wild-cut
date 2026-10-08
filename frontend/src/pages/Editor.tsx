@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { abs, api, frameUrl, type Edl } from '../api'
 import { activeJob, useEvents } from '../hooks/useEvents'
+import StageProgress from '../components/StageProgress'
 import Timeline, { type Selection } from '../components/Timeline'
 import Inspector from '../components/Inspector'
 import DirectorChat from '../components/DirectorChat'
@@ -69,7 +70,7 @@ export default function Editor() {
       <div className="p-6 flex flex-col gap-3 max-w-xl">
         <div className="card p-5">
           <div className="font-medium mb-1">No edit yet</div>
-          <div className="muted text-sm mb-3">{planning ? `${planning.kind}: ${Math.round(planning.progress * 100)}% ${planning.message}` : p?.style === 'showdown' ? 'Fill in the Showdown stats sheet and build the edit.' : 'Add footage and run Analyze to build the first edit.'}</div>
+          {planning ? <div className="mb-3"><StageProgress snap={snap} /></div> : <div className="muted text-sm mb-3">{p?.style === 'showdown' ? 'Fill in the Showdown stats sheet and build the edit.' : 'Add footage and run Analyze to build the first edit.'}</div>}
           <div className="flex gap-2">
             {p?.style !== 'showdown' && <Link className="btn" to={`/p/${pid}/footage`}>Footage</Link>}
             {p?.style === 'showdown' && <Link className="btn" to={`/p/${pid}/showdown`}>Showdown</Link>}

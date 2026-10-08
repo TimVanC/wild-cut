@@ -93,7 +93,7 @@ def build_moments(clip_id: str, shots: list[Shot], motion: MotionCurve, src_aspe
             out_t = min(shot.end, in_t + MIN_MOMENT)
             in_t = max(shot.start, out_t - MIN_MOMENT)
         m = Moment(
-            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{clip_id}:{peak_t:.3f}:{kind}")),
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{clip_id}:{in_t:.3f}:{out_t:.3f}:{peak_t:.3f}:{kind}")),
             clip_id=clip_id, in_t=round(in_t, 3), out_t=round(out_t, 3), peak_t=round(peak_t, 3),
             motion_score=round(min(1.0, value / MOTION_FULL_SCALE), 4),
             shot_start=shot.start, shot_end=shot.end, kind=kind,
@@ -129,4 +129,6 @@ def build_moments(clip_id: str, shots: list[Shot], motion: MotionCurve, src_aspe
                 best_t, best_v = t, v
         moments.append(make(best_t, best_v, s, "shot"))
     moments.sort(key=lambda m: m.score, reverse=True)
-    return moments[:max_per_clip]
+    seen: set[str] = set()
+    unique = [m for m in moments if not (m.id in seen or seen.add(m.id))]   # never two rows with one id
+    return unique[:max_per_clip]

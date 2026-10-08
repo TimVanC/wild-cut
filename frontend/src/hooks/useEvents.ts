@@ -4,7 +4,7 @@ import { abs } from '../api'
 
 export type Snapshot = {
   project: { id: string; status: string; progress: number; message: string; updated_at: string; claude_spend_usd: number; song_path: string | null }
-  jobs: { id: string; kind: string; status: string; progress: number; message: string; error: string; result: any }[]
+  jobs: { id: string; kind: string; status: string; progress: number; message: string; error: string; result: any; stages?: Record<string, { progress: number; message: string; state: string }>; payload?: any }[]
   edl_version: number | null
   chat_count: number
 }

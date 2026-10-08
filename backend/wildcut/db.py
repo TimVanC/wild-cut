@@ -162,6 +162,7 @@ class Job(SQLModel, table=True):
     message: str = ""
     payload: dict = Field(default_factory=dict, sa_column=Column(JSON))
     result: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    stages: dict = Field(default_factory=dict, sa_column=Column(JSON))   # {"video": {progress, message, state}, "song": {...}}
     error: str = ""
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
@@ -224,6 +225,7 @@ _ADDED_COLUMNS = {
     "clip": {"window_in": "FLOAT", "window_out": "FLOAT", "src_crop": "JSON"},
     "moment": {"category": "VARCHAR DEFAULT ''", "starred": "BOOLEAN DEFAULT 0", "banned": "BOOLEAN DEFAULT 0"},
     "documentary": {"chapters": "JSON"},
+    "job": {"stages": "JSON"},
 }
 
 
