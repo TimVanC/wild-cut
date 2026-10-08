@@ -60,7 +60,23 @@ def render_preview(project_id: str, edl: dict, version: int, progress: Callable[
         tmp.replace(f)
     out = pdir / "previews" / f"v{version}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    concat_chunks(files, out)
+    video = concat_chunks(files, out.with_name(f"v{version}.video.mp4"))
+    # previews always carry the song (when there is one) so the cuts can be judged against the beat,
+    # whatever the export setting says; silent exports stay silent
+    audio_cfg = edl.get("audio", {})
+    song = audio_cfg.get("song_path")
+    window = audio_cfg.get("song_window")
+    if song and window and Path(song).exists():
+        from wildcut.render.audio import build_song_audio, mux
+
+        try:
+            song_track = build_song_audio(song, window, duration, out.with_name(f"v{version}.song.m4a"))
+            mux(video, song_track, out)
+        finally:
+            video.unlink(missing_ok=True)
+            out.with_name(f"v{version}.song.m4a").unlink(missing_ok=True)
+    else:
+        video.replace(out)
     if progress:
         progress(1.0, "preview ready")
     # keep the chunk cache bounded

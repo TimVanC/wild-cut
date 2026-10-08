@@ -36,7 +36,7 @@ def _setup_project(client, assets, mode="music", style="phonk", clips=("clip_a",
     return p
 
 
-def test_full_flow_music_phonk(client, assets):
+def test_full_flow_music_phonk(client, assets, tmp_path):
     p = _setup_project(client, assets)
     pid = p["id"]
     assert client.get(f"/api/projects/{pid}/clips").json()[0]["label"] == "Clip 1"
@@ -59,6 +59,12 @@ def test_full_flow_music_phonk(client, assets):
     assert pv["ready"] and pv["url"].startswith("/api/media?path=")
     media = client.get(pv["url"])
     assert media.status_code == 200 and media.headers["content-type"].startswith("video/mp4")
+    # the preview plays the song even though the export is silent
+    from wildcut.media import probe
+
+    pv_file = tmp_path / "preview.mp4"
+    pv_file.write_bytes(media.content)
+    assert probe(pv_file).has_audio, "preview must carry the song"
     ranged = client.get(pv["url"], headers={"Range": "bytes=0-99"})
     assert ranged.status_code == 206
     # manual tweak: edit the title text, toggle an effect, swap a moment, trim a clip, then undo
