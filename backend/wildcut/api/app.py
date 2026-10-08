@@ -42,7 +42,9 @@ def _project(s: Session, project_id: str) -> Project:
 def _media_url(path: str | None) -> str | None:
     if not path:
         return None
-    return f"/api/media?path={Path(path).as_posix()}"
+    from urllib.parse import quote
+
+    return f"/api/media?path={quote(Path(path).as_posix(), safe='/:')}"
 
 
 def clip_out(c: Clip) -> dict:

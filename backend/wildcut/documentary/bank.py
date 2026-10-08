@@ -67,7 +67,9 @@ class DocShotTag(BaseModel):
     category: Literal["hero", "aura", "broll", "other"] = Field(description="hero = the target animal doing something (hunting, leaping, fighting, fleeing, swinging, diving); aura = the target animal close-up or posing (stare, slow turn, silhouette, portrait); broll = landscape/habitat with no clear animal; other = a different animal, or people/presenters/crew")
     species: str = Field(description="main animal common name, lowercase; 'none' if no animal")
     has_people: bool = Field(description="people, presenters, crew, hands, vehicles visible")
-    has_text: bool = Field(description="burned-in text, subtitles, lower thirds, title cards, maps, logos")
+    has_text: bool = Field(description="any burned-in text or graphics: subtitles, lower thirds, title cards, credits, maps, logos, channel bugs")
+    text_kind: Literal["none", "watermark", "subtitle", "lower_third", "title_card", "credits", "map", "other"] = Field(
+        default="none", description="watermark = a small static channel logo/bug in a corner only; subtitle/lower_third/title_card/credits/map = text or graphics over the picture; none if no text")
     caption: str = Field(description="under 10 words describing the shot")
     intensity: int = Field(ge=1, le=10, description="how dramatic the action is (1 for still shots)")
     framing: int = Field(ge=1, le=10, description="composition quality for a vertical social edit")
@@ -77,8 +79,12 @@ class DocShotBatch(BaseModel):
     tags: list[DocShotTag]
 
 
-DOC_SYSTEM = ("You classify shots from a nature documentary for a short-form edit about one target animal. "
-              "Answer only with the requested JSON. Be literal about what is visible in the frame.")
+DOC_SYSTEM = ("You classify shots from a nature documentary for a short-form edit. The target animal may be one species "
+              "or 'any' (a compilation). Answer only with the requested JSON. Be literal about what is visible in the frame. "
+              "A small static channel logo in a corner is a watermark, not subtitle text.")
+
+REJECTING_TEXT = {"subtitle", "lower_third", "title_card", "credits", "map", "other"}
+MULTI = "any"
 
 
 def file_key(path: Path) -> str:
@@ -152,7 +158,7 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
     bank_path = cache / "bank.json"
     if bank_path.exists() and not force:
         bank = json.loads(bank_path.read_text(encoding="utf-8"))
-        if bank.get("animal") == animal or animal == "auto":
+        if bank.get("requested_animal") == animal:
             return bank
     info = probe(src)
     duration = duration or info.duration
@@ -204,6 +210,9 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
     timings["motion"] = round(time.time() - t0, 1)
 
     # 5) per-shot keyframes, cheap filters, dedupe, motion stats
+    client = client or get_client()
+    client_enabled = client.enabled
+    tag_cache = _load_tag_cache(cache, bank_path)
     t0 = time.time()
     thumbs = cache / "thumbs"
     thumbs.mkdir(exist_ok=True)
@@ -235,8 +244,10 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
             bs.duplicate_of = dup
             bank_shots.append(bs)
             continue
-        if has_text(frames[1:]):
+        if has_text(frames[1:], thresh=(0.85 if (client_enabled) else 0.5)):
+            # with Claude available the heuristic only catches blatant title cards; Claude judges the rest
             bs.rejected = "text"
+            bs.classified_by = "heuristic"
             bank_shots.append(bs)
             continue
         # channel bugs / watermarks are left to Claude's has_text: the static-corner heuristic also
@@ -260,13 +271,34 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
         bank_shots.append(bs)
     timings["filters"] = round(time.time() - t0, 1)
 
-    # 6) Claude classification on keyframes (surviving shots, highest motion first)
+    # 6) Claude classification on keyframes (surviving shots, highest motion first); cached per shot
     t0 = time.time()
-    client = client or get_client()
     survivors = [b for b in bank_shots if not b.rejected]
     species_votes: dict[str, float] = {}
+    text_flags: dict[int, str] = {}       # shot index -> text_kind reported by Claude
+
+    def apply_tag(b: BankShot, t: dict) -> None:
+        b.species = str(t.get("species", "")).strip().lower()
+        b.caption = str(t.get("caption", "")).strip()
+        b.intensity, b.framing = int(t.get("intensity", 5)), int(t.get("framing", 6))
+        b.classified_by = "claude"
+        kind = t.get("text_kind") or ("other" if t.get("has_text") else "none")
+        text_flags[b.index] = kind
+        if t.get("has_people"):
+            b.rejected = "people"
+        elif kind in REJECTING_TEXT:
+            b.rejected = "text"
+        else:
+            b.category = t.get("category", b.category)
+            if b.species and b.species != "none":
+                species_votes[b.species] = species_votes.get(b.species, 0.0) + b.duration
+
     if client.enabled and survivors:
         order = sorted(survivors, key=lambda b: (-b.max_motion, -b.duration))[:max_classify]
+        cached = [b for b in order if str(b.index) in tag_cache]
+        for b in cached:
+            apply_tag(b, tag_cache[str(b.index)])
+        order = [b for b in order if str(b.index) not in tag_cache]
         for start in range(0, len(order), SHOTS_PER_CALL):
             batch = order[start:start + SHOTS_PER_CALL]
             step(0.6 + 0.3 * start / max(1, len(order)), f"Claude classifying shots {start}/{len(order)}")
@@ -289,23 +321,35 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
                 t = by_idx.get(k)
                 if t is None:
                     continue
-                b.species = t.species.strip().lower()
-                b.caption = t.caption.strip()
-                b.intensity, b.framing = int(t.intensity), int(t.framing)
-                b.classified_by = "claude"
-                if t.has_text:
-                    b.rejected = "text"
-                elif t.has_people:
-                    b.rejected = "people"
-                else:
-                    b.category = t.category
-                    if b.species and b.species != "none":
-                        species_votes[b.species] = species_votes.get(b.species, 0.0) + b.duration
+                td = t.model_dump()
+                tag_cache[str(b.index)] = td
+                apply_tag(b, td)
+            _save_tag_cache(cache, tag_cache)
     timings["classify"] = round(time.time() - t0, 1)
-    target = animal
-    if animal == "auto" and species_votes:
-        target = max(species_votes, key=species_votes.get)
-    if target not in ("auto", "") and client.enabled:
+    # film-wide text: when nearly every shot carries "text" it is a channel bug / watermark, not subtitles
+    flagged = [i for i, k in text_flags.items() if k in REJECTING_TEXT]
+    notes: list[str] = []
+    if text_flags and len(flagged) > 0.6 * len(text_flags):
+        for b in bank_shots:
+            if b.rejected == "text" and b.classified_by == "claude":
+                b.rejected = ""
+                td = tag_cache.get(str(b.index), {})
+                b.category = td.get("category", b.category)
+                if b.species and b.species != "none":
+                    species_votes[b.species] = species_votes.get(b.species, 0.0) + b.duration
+        notes.append(f"{len(flagged)} of {len(text_flags)} classified shots were flagged as text: treated as a persistent watermark and kept.")
+    target = animal.strip().lower() if animal else "auto"
+    if target in ("all", "every", "multiple", "multi"):
+        target = MULTI
+    if target == "auto" and species_votes:
+        best = max(species_votes, key=species_votes.get)
+        share = species_votes[best] / max(1e-6, sum(species_votes.values()))
+        if share >= 0.5:
+            target = best
+        else:
+            target = MULTI
+            notes.append(f"No single animal dominates ({best} has {share:.0%} of the animal footage): treating the film as a multi-animal compilation; every animal's action counts as HERO and each edit is titled after its own hero.")
+    if target not in ("auto", "", MULTI) and client.enabled:
         # shots of a different species are context, not the hero
         for b in bank_shots:
             if not b.rejected and b.category in ("hero", "aura") and b.species and b.species not in ("none", target) and b.classified_by == "claude":
@@ -315,7 +359,8 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
             b.score = score_shot(b)
     bank = {"file_key": file_key(src), "path": str(src), "proxy": str(proxy), "crop": {"bars": bars, "rect": list(rect) if has_crop else None},
             "duration": duration, "fps": info.fps, "width": info.width, "height": info.height, "animal": target,
-            "requested_animal": animal, "shots": [b.to_dict() for b in bank_shots], "timings": timings,
+            "requested_animal": animal, "shots": [b.to_dict() for b in bank_shots], "timings": timings, "notes": notes,
+            "species": sorted(species_votes.items(), key=lambda kv: -kv[1])[:12],
             "n_shots": len(shots), "n_kept": len([b for b in bank_shots if not b.rejected]),
             "rejected": {r: len([b for b in bank_shots if b.rejected == r]) for r in ("black", "short", "text", "people", "duplicate", "logo")},
             "categories": {c: len([b for b in bank_shots if not b.rejected and b.category == c]) for c in CATEGORIES},
@@ -323,6 +368,40 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
     bank_path.write_text(json.dumps(bank, indent=1), encoding="utf-8")
     step(1.0, "shot bank ready")
     return bank
+
+
+def _load_tag_cache(cache: Path, bank_path: Path) -> dict[str, dict]:
+    p = cache / "claude_tags.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # seed from a bank written before the cache existed (first release): rebuild the tags we can
+    if bank_path.exists():
+        try:
+            old = json.loads(bank_path.read_text(encoding="utf-8"))
+            shots = old.get("shots", [])
+            n_claude = [s for s in shots if s.get("classified_by") == "claude"]
+            n_text = [s for s in n_claude if s.get("rejected") == "text"]
+            film_wide = len(n_claude) and len(n_text) > 0.6 * len(n_claude)
+            out = {}
+            for s in n_claude:
+                kind = "none"
+                if s.get("rejected") == "text":
+                    kind = "watermark" if film_wide else "subtitle"
+                out[str(s["index"])] = {"species": s.get("species", ""), "caption": s.get("caption", ""), "intensity": s.get("intensity", 5),
+                                        "framing": s.get("framing", 6), "has_people": s.get("rejected") == "people",
+                                        "has_text": kind != "none", "text_kind": kind,
+                                        "category": s.get("category") or "other"}
+            return out
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_tag_cache(cache: Path, tags: dict[str, dict]) -> None:
+    (cache / "claude_tags.json").write_text(json.dumps(tags), encoding="utf-8")
 
 
 HERO_SECONDS_PER_EDIT = 26.0      # ~build + post coverage at 1-4 beat cuts

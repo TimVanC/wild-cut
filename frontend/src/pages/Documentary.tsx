@@ -52,7 +52,7 @@ export default function Documentary() {
             <label className="btn btn-primary cursor-pointer whitespace-nowrap">{uploadFilm.isPending ? `Uploading… ${pct ?? 0}%` : 'Upload film'}<input type="file" accept="video/*,.mkv,.mp4,.mov" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFilm.mutate(f); e.target.value = '' }} /></label>
             {!isRemote() ? <><input className="input" value={path} onChange={e => setPath(e.target.value)} placeholder="or a local path / a file in inbox/" /><button className="btn" onClick={() => setBrowse(true)}>Browse…</button></> : <span className="muted text-xs truncate">{path ? path.split(/[\\/]/).pop() : 'no film yet'}</span>}
           </div>{uploadFilm.isPending && <div className="h-1.5 rounded bg-[#23232b] overflow-hidden mt-2"><div className="h-full" style={{ width: `${pct ?? 0}%`, background: 'var(--accent)' }} /></div>}</div>
-          <div><label className="label">Animal</label><input className="input" value={animal} onChange={e => setAnimal(e.target.value)} placeholder="auto-detect" /></div>
+          <div><label className="label">Animal</label><input className="input" value={animal} onChange={e => setAnimal(e.target.value)} placeholder="auto, any, or a name" title="auto = detect the main animal; any = multi-animal compilation; or type a species" /></div>
           <div><label className="label">Edits</label><select className="input" value={edits} onChange={e => setEdits(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="as_many">as many as the footage supports</option></select></div>
           <div className="flex gap-2">
             <button className="btn" disabled={register.isPending || !path} onClick={() => register.mutate()}>Save</button>
@@ -74,12 +74,13 @@ export default function Documentary() {
           <span><b>{bank.n_shots}</b> shots, <b>{bank.n_kept}</b> kept</span>
           <span className="muted">rejected: {Object.entries(bank.rejected).filter(([, v]) => (v as number) > 0).map(([k, v]) => `${v} ${k}`).join(', ') || 'none'}</span>
           <span>HERO {bank.categories.hero} · AURA {bank.categories.aura} · BROLL {bank.categories.broll} · OTHER {bank.categories.other}</span>
-          <span className="muted">animal: <b style={{ color: 'var(--text)' }}>{bank.animal || 'unknown'}</b>{bank.classified_by_claude ? ` · ${bank.classified_by_claude} shots classified by Claude` : ' · heuristic classification (Claude not configured)'}</span>
+          <span className="muted">animal: <b style={{ color: 'var(--text)' }}>{bank.animal === 'any' ? 'multiple (compilation)' : (bank.animal || 'unknown')}</b>{bank.species?.length > 1 && <span> · {bank.species.slice(0, 6).map((s: [string, number]) => `${s[0]} ${Math.round(s[1])}s`).join(', ')}</span>}{bank.classified_by_claude ? ` · ${bank.classified_by_claude} shots classified by Claude` : ' · heuristic classification (Claude not configured)'}</span>
           <span className="muted">analysis {d?.analysis_seconds ? `${Math.round(d.analysis_seconds)}s` : ''} ({Object.entries(bank.timings).map(([k, v]) => `${k} ${v}s`).join(', ')})</span>
           <span className="ml-auto pill pill-warn">supports {est?.supported ?? 0} more edit{est?.supported === 1 ? '' : 's'} · {est?.hero_seconds}s of HERO in {est?.hero_shots} shots</span>
-          <button className="btn btn-primary" disabled={!!job || !est?.supported && edits !== '1'} onClick={() => generate.mutate()}>Generate {edits === 'as_many' ? `${est?.supported ?? 0}` : edits} edit{edits === '1' ? '' : 's'}</button>
+          <button className="btn btn-primary" disabled={!!job || !(est?.hero_shots > 0)} onClick={() => generate.mutate()}>{est?.supported ? `Generate ${edits === 'as_many' ? est.supported : edits} edit${(edits === '1' || (edits === 'as_many' && est.supported === 1)) ? '' : 's'}` : 'Generate 1 shorter edit'}</button>
         </div>
       )}
+      {bank?.notes?.length > 0 && <div className="text-xs" style={{ color: 'var(--accent)' }}>{bank.notes.join(' ')}</div>}
       {doc.data?.edits?.length > 0 && (
         <div className="card p-4">
           <div className="font-medium mb-2">Generated edits</div>

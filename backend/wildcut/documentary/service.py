@@ -131,6 +131,7 @@ def bank_view(s: Session, doc: Documentary) -> dict:
     return {"ready": True, "animal": bank.get("animal"), "requested_animal": bank.get("requested_animal"), "proxy_url": f"/api/media?path={Path(bank['proxy']).as_posix()}",
             "crop": bank["crop"], "duration": bank["duration"], "timings": bank["timings"], "n_shots": bank["n_shots"], "n_kept": bank["n_kept"],
             "rejected": bank["rejected"], "categories": bank["categories"], "classified_by_claude": bank.get("classified_by_claude", 0),
+            "notes": bank.get("notes", []), "species": bank.get("species", []),
             "estimate": estimate_edits(bank, used, banned), "shots": shots}
 
 
@@ -193,7 +194,7 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
                         audio_export="silent" if project.audio_export == "original" else project.audio_export, song_path=project.song_path,
                         options={"intensity": (project.options or {}).get("intensity", "med"),
                                  "documentary_edit": {"documentary_id": doc.id, "parent": project.id, "index": k},
-                                 "title": f"THE {animal.upper()}" if animal and animal not in ("auto", "none", "") else None})
+                                 "title": f"THE {animal.upper()}" if animal and animal not in ("auto", "none", "", "any") else None})
         s.add(child)
         s.commit()
         s.refresh(child)
@@ -207,7 +208,7 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
                         thumb_path=b.thumb or None, duration=b.end, fps=doc.fps, width=doc.width, height=doc.height, has_audio=False,
                         description=b.caption or f"{b.category} shot at {int(b.start // 60)}:{int(b.start % 60):02d}", analyzed=True,
                         window_in=b.start, window_out=b.end, src_crop=(bank["crop"]["rect"] if bank["crop"].get("rect") else None),
-                        tags={"species": b.species or (animal if animal not in ("auto", "none", "") else ""), "category": b.category,
+                        tags={"species": b.species or (animal if animal not in ("auto", "none", "", "any") else ""), "category": b.category,
                               "doc_shot_index": b.index, "film_time": b.start})
             s.add(clip)
             s.commit()

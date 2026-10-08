@@ -46,9 +46,10 @@ class FakeDocClaude(ClaudeClient):
                "landscape": ("broll", False, False), "other": ("other", False, False), "text": ("hero", False, True),
                "presenter": ("other", True, False)}
 
-    def __init__(self, segments):
+    def __init__(self, segments, text_kind="subtitle"):
         super().__init__(api_key="fake", model="x")
         self.segments = segments
+        self.text_kind = text_kind   # what text segments report; "bug_everywhere" flags every shot as text
         self.pending: list[float] = []
         self.calls = 0
 
@@ -69,8 +70,11 @@ class FakeDocClaude(ClaudeClient):
         for k in range(n):
             t = self.pending[k] if k < len(self.pending) else 0.0
             cat, people, text = self.KIND_TO[self.kind_at(t)]
+            film_wide = self.text_kind == "bug_everywhere"   # Claude reporting a rejecting kind on every shot
+            kind = ("other" if film_wide else (self.text_kind if text else "none"))
             tags.append(DocShotTag(index=k, category=cat, species="disc" if cat in ("hero", "aura") else ("square" if cat == "other" else "none"),
-                                   has_people=people, has_text=text, caption=f"{cat} shot", intensity=8 if cat == "hero" else 3, framing=7))
+                                   has_people=people, has_text=text or film_wide, text_kind=kind,
+                                   caption=f"{cat} shot", intensity=8 if cat == "hero" else 3, framing=7))
         self.pending = []
         return DocShotBatch(tags=tags)
 
@@ -228,3 +232,36 @@ def test_generate_two_distinct_edits(doc_project, doc_assets, bank):
         # the estimate drops after generation because shots are now used
         doc = get_documentary(s, p.id)
         assert doc.estimate["supported"] <= 2
+
+
+def test_film_wide_watermark_is_kept(doc_assets, bank):
+    """A channel bug on every shot must not reject the film (BBC-style compilations)."""
+    import wildcut.documentary.bank as bankmod
+    from wildcut.config import get_settings
+
+    settings = get_settings()
+    old = settings.data_dir
+    settings.data_dir = Path(bank["_data_dir"])
+    fake = FakeDocClaude(doc_assets["segments"], text_kind="bug_everywhere")
+    real_extract = bankmod.extract_frames
+
+    def recording_extract(path, times, width=None):
+        if len(times) == 1 and width == 448:
+            fake.pending.append(times[0])
+        return real_extract(path, times, width=width)
+
+    bankmod.extract_frames = recording_extract
+    try:
+        # force=True re-runs filters + classification only (proxy, shots, motion stay cached)
+        cache = bankmod.cache_dir_for(Path(doc_assets["dir"]) / doc_assets["path"])
+        (cache / "claude_tags.json").unlink(missing_ok=True)
+        (cache / "bank.json").unlink(missing_ok=True)   # otherwise tags are seeded from the earlier bank and Claude is never asked
+        b = bankmod.analyze_documentary(Path(doc_assets["dir"]) / doc_assets["path"], doc_assets["duration"], "any", client=fake, force=True)
+    finally:
+        bankmod.extract_frames = real_extract
+        settings.data_dir = old
+        (cache / "claude_tags.json").unlink(missing_ok=True)
+        (cache / "bank.json").unlink(missing_ok=True)
+    assert b["rejected"]["text"] <= 5, b["rejected"]
+    assert any("watermark" in n for n in b.get("notes", []))
+    assert b["animal"] == "any" and b["categories"]["hero"] >= 25

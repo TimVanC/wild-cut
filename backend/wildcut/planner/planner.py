@@ -24,7 +24,7 @@ from wildcut.planner.presets import load_preset, pick
 from wildcut.planner.speed import hero_ramp, source_at, timeline_between, timeline_duration
 
 MIN_SLOT = 0.25
-UNKNOWN_SPECIES = {"", "animal", "none", "unknown", "auto"}
+UNKNOWN_SPECIES = {"", "animal", "none", "unknown", "auto", "any"}
 
 
 @dataclass
