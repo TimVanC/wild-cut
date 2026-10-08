@@ -38,7 +38,7 @@ export default function Editor() {
   const renderPreview = useMutation({ mutationFn: () => api.preview(pid), onSuccess: () => qc.invalidateQueries({ queryKey: ['preview', pid] }) })
   const doOp = useCallback((o: string, args: Record<string, unknown>) => { setErr(''); op.mutate({ op: o, args }) }, [op])
   const previewJob = activeJob(snap, ['preview'])
-  const planning = activeJob(snap, ['analyze', 'plan', 'chat'])
+  const planning = activeJob(snap, ['analyze', 'analyze_clips', 'plan', 'chat'])
   const previewReady = preview.data?.ready && preview.data.version === edlQ.data?.version
   const seek = (t: number) => { setTime(t); if (video.current && previewReady) video.current.currentTime = t }
   useEffect(() => { if (previewReady) setDirty([]) }, [previewReady])

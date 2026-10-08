@@ -22,12 +22,15 @@ def handler(kind: str):
 
 
 def enqueue(s: Session, project_id: str, kind: str, payload: dict | None = None) -> Job:
-    # collapse duplicate queued jobs of the same kind for the same project (e.g. repeated preview requests)
+    job = Job(project_id=project_id, kind=kind, payload=payload or {})
+    # collapse duplicate queued jobs of the same kind for the same project (e.g. repeated preview requests),
+    # but a song-only analyze must not swallow a queued "analyze and build the edit" (Tim lost his build click)
     for old in s.exec(select(Job).where(Job.project_id == project_id, Job.kind == kind, Job.status == "queued")).all():
+        if kind == "analyze" and bool((old.payload or {}).get("only_song")) != bool((payload or {}).get("only_song")):
+            continue
         old.status = "cancelled"
         old.updated_at = now()
         s.add(old)
-    job = Job(project_id=project_id, kind=kind, payload=payload or {})
     s.add(job)
     s.commit()
     s.refresh(job)

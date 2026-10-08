@@ -332,3 +332,13 @@ def test_job_lanes_keep_the_song_off_the_video_queue(client):
         assert claim_next(s, lane="light").id == song.id      # the light worker skips the older video job
         assert claim_next(s, lane="heavy").id == video.id
         assert claim_next(s, lane="light") is None
+        # a song-only analyze does not cancel a queued "analyze and build the edit"
+        from wildcut.services.jobs import enqueue
+
+        build = enqueue(s, "y", "analyze", {"force": False, "then_plan": True})
+        enqueue(s, "y", "analyze", {"only_song": True, "then_plan": False})
+        s.refresh(build)
+        assert build.status == "queued"
+        again = enqueue(s, "y", "analyze", {"force": False, "then_plan": True})
+        s.refresh(build)
+        assert build.status == "cancelled" and again.status == "queued"   # a real duplicate still collapses
