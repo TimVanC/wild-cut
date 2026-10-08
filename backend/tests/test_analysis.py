@@ -131,3 +131,9 @@ def test_moment_ids_are_unique_even_with_a_shared_peak_time():
     # the same inputs give the same ids (determinism), different ranges give different ids
     again = build_moments("clip", shots, curve, 16 / 9)
     assert [m.id for m in ms] == [m.id for m in again]
+
+
+def test_motion_reports_progress(assets):
+    seen: list[float] = []
+    curve = compute_motion(_clip(assets, "panning"), progress=seen.append)
+    assert curve.times and seen and seen == sorted(seen) and seen[-1] >= 0.5

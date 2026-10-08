@@ -65,10 +65,19 @@ def _largest_moving_box(mag: np.ndarray, thresh: float) -> list[float] | None:
 
 
 def compute_motion(path: str | Path, sample_fps: float = SAMPLE_FPS, width: int = ANALYSIS_WIDTH,
-                   start: float = 0.0, end: float | None = None) -> MotionCurve:
+                   start: float = 0.0, end: float | None = None, progress=None) -> MotionCurve:
+    """Optical-flow motion curve. `progress(fraction)` is called every ~2 s of media so a long clip shows
+    movement instead of sitting on "motion" for ten minutes."""
     import cv2
-    from wildcut.media import iter_frames
+    from wildcut.media import iter_frames, probe
 
+    total = None
+    if progress:
+        try:
+            total = max(0.1, (end if end is not None else probe(path).duration) - start)
+        except Exception:  # noqa: BLE001
+            total = None
+    last_report = -1e9
     times: list[float] = []
     subject: list[float] = []
     camera: list[float] = []
@@ -76,6 +85,9 @@ def compute_motion(path: str | Path, sample_fps: float = SAMPLE_FPS, width: int 
     prev = None
     prev_t = None
     for t, frame in iter_frames(path, sample_fps=sample_fps, width=width, start=start, end=end, gray=True):
+        if progress and total and t - last_report >= 2.0:
+            progress(min(0.99, (t - start) / total))
+            last_report = t
         if prev is not None:
             dt = max(1e-3, t - prev_t)
             flow = cv2.calcOpticalFlowFarneback(prev, frame, None, 0.5, 4, 21, 3, 5, 1.2, 0)

@@ -48,7 +48,10 @@ def analyze_clip(s: Session, project: Project, clip: Clip, progress: Progress | 
     shots = detect_shots(proxy, clip.duration)
     if progress:
         progress(0.3, f"{clip.label}: motion")
-    curve = compute_motion(proxy)
+    # 20 fps flow on a short clip; 12 fps (documentary rate) on long sequences, which cuts the slowest step by 40%
+    fps = 20.0 if clip.duration <= 90 else 12.0
+    curve = compute_motion(proxy, sample_fps=fps,
+                           progress=(lambda f: progress(0.3 + 0.4 * f, f"{clip.label}: motion {int(f * 100)}%")) if progress else None)
     info = probe(proxy)
     # long single clips (a 4-minute BBC sequence) need more than 12 moments or the edit reuses the same few
     moments = build_moments(clip.id, shots, curve, info.width / info.height, ASPECTS, max_per_clip=max(12, min(60, int(info.duration / 8))))

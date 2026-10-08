@@ -189,6 +189,13 @@ filters / classification / two distinct edits.
   is chosen by tier (subject's own species + action tag, then subject + action in the caption,
   then subject anywhere). Long single clips also got a bigger moment cap (duration / 8 s, 12 to
   60) because 12 moments for a 4.5-minute sequence forced constant reuse.
+- Two worker lanes on the server (Tim: "why does it say queued behind another job? this is the
+  only job"): uploading a clip starts its analysis, and the song job created seconds later sat
+  behind a 15-minute motion pass. `serve.py` now runs a "heavy" worker (video / documentary
+  analysis, stock import, export) and a "light" worker (song-only analyze, plan, preview, chat);
+  `claim_next(lane=...)` picks by `job_lane`. Local `make dev` still runs one worker for all.
+  The motion step also reports progress every 2 s of media ("Clip 1: motion 45%") and runs at
+  12 fps instead of 20 on clips longer than 90 s; the queued message names the job it waits for.
 - Budget: Tim's third Director turn ("it needs to be completely redone") ran 16 tool calls with
   frame look-ups and cost about $1.20, which exhausted the $1.50 per-project budget mid-turn and
   then silently downgraded the next analysis to heuristics (no species tags, so the focus had

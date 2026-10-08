@@ -84,23 +84,26 @@ def watch_inbox(s: Session) -> None:
         _save_seen(inbox, seen)
 
 
-def main(poll: float = 0.5, once: bool = False) -> None:
+def main(poll: float = 0.5, once: bool = False, lane: str | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     engine = get_engine()
     get_settings().ensure_dirs()
-    log.info("worker started (db=%s)", get_settings().db_path)
+    log.info("worker started (db=%s, lane=%s)", get_settings().db_path, lane or "all")
     last_inbox = 0.0
     last_recover = 0.0
-    with Session(engine) as s:
-        n = recover_stale(s, all_running=True)      # jobs of the previous worker (crash or redeploy)
-        if n:
-            log.info("re-queued %d job(s) left running by a previous worker", n)
+    if lane != "light":
+        # only one worker re-queues on startup; the light lane's jobs are seconds long and would be
+        # re-queued by the heavy worker anyway
+        with Session(engine) as s:
+            n = recover_stale(s, all_running=True)      # jobs of the previous worker (crash or redeploy)
+            if n:
+                log.info("re-queued %d job(s) left running by a previous worker", n)
     while True:
         with Session(engine) as s:
             if time.time() - last_recover > 60.0:
                 recover_stale(s)                       # jobs orphaned while this worker was busy
                 last_recover = time.time()
-            job = claim_next(s)
+            job = claim_next(s, lane=lane)
             if job is not None:
                 jid, jkind = job.id, job.kind
                 log.info("job %s %s start", jid, jkind)
@@ -145,4 +148,9 @@ def run_pending(engine=None) -> int:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    _lane = None
+    if "--lane" in sys.argv:
+        _lane = sys.argv[sys.argv.index("--lane") + 1]
+    main(lane=_lane)

@@ -10,7 +10,10 @@ export default function StageProgress({ snap, compact }: { snap: Snapshot | null
   const rows = stages ? Object.entries(stages) : [[job.kind, { progress: job.progress, message: job.message, state: job.status === 'queued' ? 'pending' : 'running' }] as const]
   return (
     <div className={`card ${compact ? 'p-2' : 'p-3'} flex flex-col gap-2 text-xs`}>
-      {job.status === 'queued' && <div className="muted">Queued behind another job…</div>}
+      {job.status === 'queued' && (() => {
+        const other = snap?.jobs.find(j => j.status === 'running' && j.id !== job.id)
+        return <div className="muted">{other ? `Waiting for ${LABELS[Object.keys(other.stages ?? {})[0] ?? ''] ?? other.kind.replace('_', ' ')} to finish (${other.message || `${Math.round(other.progress * 100)}%`})…` : 'Queued behind a job in another project…'}</div>
+      })()}
       {rows.map(([key, st]) => (
         <div key={key} className="flex flex-col gap-1">
           <div className="flex justify-between gap-2">

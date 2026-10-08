@@ -73,8 +73,21 @@ def recover_stale(s: Session, max_age: float = STALE_RUNNING_SECONDS, all_runnin
     return n
 
 
-def claim_next(s: Session) -> Job | None:
-    job = s.exec(select(Job).where(Job.status == "queued").order_by(Job.created_at)).first()
+HEAVY_KINDS = {"analyze", "analyze_clips", "documentary_analyze", "documentary_generate", "import_stock", "export"}
+
+
+def job_lane(job: Job) -> str:
+    """'heavy' = minutes of ffmpeg / optical flow / Claude batches; 'light' = seconds (song, plan, preview, chat).
+    A song-only analyze job is light so the Music page never waits behind a video."""
+    if job.kind == "analyze" and (job.payload or {}).get("only_song"):
+        return "light"
+    return "heavy" if job.kind in HEAVY_KINDS else "light"
+
+
+def claim_next(s: Session, lane: str | None = None) -> Job | None:
+    """Claim the oldest queued job, optionally only from one lane (two workers run in parallel on the server)."""
+    queued = s.exec(select(Job).where(Job.status == "queued").order_by(Job.created_at)).all()
+    job = next((j for j in queued if lane is None or job_lane(j) == lane), None)
     if job is None:
         return None
     job.status = "running"

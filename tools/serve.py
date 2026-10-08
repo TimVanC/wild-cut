@@ -20,21 +20,26 @@ BACKEND = ROOT / "backend"
 def main() -> None:
     env = dict(os.environ)
     env.setdefault("WILDCUT_HOST", "0.0.0.0")
-    procs = {"worker": subprocess.Popen([sys.executable, "-m", "wildcut.worker"], cwd=BACKEND, env=env)}
+    # two workers: "heavy" (video / documentary analysis, exports) and "light" (song, plan, preview, chat),
+    # so a 10-second song analysis never waits behind a 15-minute motion pass
+    def start_worker(lane: str) -> subprocess.Popen:
+        return subprocess.Popen([sys.executable, "-m", "wildcut.worker", "--lane", lane], cwd=BACKEND, env=env)
 
-    def keep_worker_alive() -> None:
+    procs = {"heavy": start_worker("heavy"), "light": start_worker("light")}
+
+    def keep_workers_alive() -> None:
         while True:
             time.sleep(5)
-            w = procs["worker"]
-            if w.poll() is not None:
-                print(f"[serve] worker exited with {w.returncode}; restarting", flush=True)
-                procs["worker"] = subprocess.Popen([sys.executable, "-m", "wildcut.worker"], cwd=BACKEND, env=env)
+            for lane, w in list(procs.items()):
+                if w.poll() is not None:
+                    print(f"[serve] {lane} worker exited with {w.returncode}; restarting", flush=True)
+                    procs[lane] = start_worker(lane)
 
-    threading.Thread(target=keep_worker_alive, daemon=True).start()
+    threading.Thread(target=keep_workers_alive, daemon=True).start()
     api = subprocess.Popen([sys.executable, "-m", "wildcut.api"], cwd=BACKEND, env=env)
 
     def stop(*_: object) -> None:
-        for p in (api, procs["worker"]):
+        for p in (api, *procs.values()):
             try:
                 p.terminate()
             except Exception:

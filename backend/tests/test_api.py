@@ -316,3 +316,19 @@ def test_failed_job_does_not_poison_the_session_or_restart_forever(client):
             assert dead.status == "error" and "gave up" in dead.error
     finally:
         jobsmod.HANDLERS.pop("boom_test", None)
+
+
+def test_job_lanes_keep_the_song_off_the_video_queue(client):
+    from wildcut.db import Job, get_engine
+    from wildcut.services.jobs import claim_next, job_lane
+
+    with Session(get_engine()) as s:
+        video = Job(project_id="x", kind="analyze_clips", payload={"clip_ids": ["c"]})
+        song = Job(project_id="x", kind="analyze", payload={"only_song": True})
+        s.add(video)
+        s.add(song)
+        s.commit()
+        assert job_lane(video) == "heavy" and job_lane(song) == "light"
+        assert claim_next(s, lane="light").id == song.id      # the light worker skips the older video job
+        assert claim_next(s, lane="heavy").id == video.id
+        assert claim_next(s, lane="light") is None
