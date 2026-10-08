@@ -162,6 +162,13 @@ def _analyze(s: Session, job: Job, progress) -> dict:
         song_progress(0.05, "music: beats and drop")
         analyze_song(s, project, song_progress)
         song_progress(1.0, "music: done")
+        # run_job flipped the project to "analyzing"; a song job does not change the footage state
+        from wildcut.services.projects import project_clips
+
+        clips = project_clips(s, project.id)
+        project.status = "analyzed" if clips and all(c.analyzed for c in clips) else "new"
+        s.add(project)
+        s.commit()
         return {}
     analyze_project(s, project, progress, only_unanalyzed=not job.payload.get("force"))
     if job.payload.get("then_plan", True):

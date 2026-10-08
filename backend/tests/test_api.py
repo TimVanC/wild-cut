@@ -228,6 +228,7 @@ def test_song_job_only_analyzes_the_song(client, assets, monkeypatch):
     assert song_job["status"] == "done", song_job
     assert calls["clips"] == 0
     assert client.get(f"/api/projects/{pid}/beatgrid").status_code == 200
+    assert client.get(f"/api/projects/{pid}").json()["status"] != "analyzing", "a song job must not leave the project 'analyzing'"
 
 
 def test_config_and_stock_status(client):
