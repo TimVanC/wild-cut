@@ -23,6 +23,5 @@ COPY tools tools
 COPY --from=frontend /app/frontend/dist frontend/dist
 
 ENV DATA_DIR=/app/data INBOX_DIR=/app/data/inbox EXPORTS_DIR=/app/data/exports PYTHONUNBUFFERED=1
-VOLUME ["/app/data"]
 EXPOSE 8787
 CMD ["python", "tools/serve.py"]

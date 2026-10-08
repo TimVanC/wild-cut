@@ -86,10 +86,12 @@ filters / classification / two distinct edits.
   than the window ending just after the drop.
 - The Anthropic key Tim provided is user-scoped (`sk-ant-usr-...`): the API rejects every request
   without an `anthropic-workspace-id` header and the key cannot list workspaces, so no live
-  Claude call succeeded during the build. `ANTHROPIC_WORKSPACE_ID` is read from `.env` and sent
-  as that header; until it is set the app reports Claude as disabled and uses heuristics
+  Claude call succeeded during the overnight build. `ANTHROPIC_WORKSPACE_ID` is read from `.env`
+  and sent as that header; without it the app reports Claude as disabled and uses heuristics
   (motion-only tags, species "animal" and the placeholder title "THE ANIMAL", offline Director
-  commands). Every Claude path was tested with fake clients.
+  commands). Every Claude path was tested with fake clients. Tim supplied the workspace id the
+  next morning; a live `describe_clip` call then succeeded ($0.003) and the Director was
+  exercised with the real model (see the UI verification list).
 - Preview re-rendering uses fixed 2 s chunks keyed by a content hash; only changed chunks
   re-render and the chunks are stitched with ffmpeg's concat demuxer (stream copy).
 - Undo / redo: EDL versions are append-only with an `edl_cursor` on the project; a new change
@@ -151,9 +153,9 @@ filters / classification / two distinct edits.
 
 ## Known gaps
 
-- No live Claude call was possible (workspace-scoped key needed), so vision tag quality, title
-  species, Showdown stats drafting, search expansion, thumbnail pre-scoring and the Director's
-  language understanding are untested against the real model. The fake clients exercise every
+- Claude only went live at the very end (workspace id supplied after the build), so vision tag
+  quality, Showdown stats drafting, search expansion and thumbnail pre-scoring were not tuned
+  against the real model; only the Director was exercised live. The fake clients exercise every
   code path and schema.
 - No Pexels / Pixabay keys were available: the adapters are tested against mocked HTTP responses
   shaped like the official API docs; the PRD's integration test ("search Pexels for cheetah
