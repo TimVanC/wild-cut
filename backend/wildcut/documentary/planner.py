@@ -82,7 +82,9 @@ class DocumentaryPlanner(Planner):
                 cands = [m for m in self.pool if (m.category or "") == cat and m.id not in self.used_moments]
                 if not cands:
                     break
-                m = max(cands, key=lambda x: self.adjusted(x) - (0.15 if x.clip_id == prev_clip else 0.0))
+                opener = self.req.options.get("opener_clip_id")
+                preferred = [x for x in cands if x.clip_id == opener] if (role == "intro" and not out and opener) else []
+                m = max(preferred or cands, key=lambda x: self.adjusted(x) - (0.15 if x.clip_id == prev_clip else 0.0))
                 clip = self.clips_by_id[m.clip_id]
                 shot_start = m.shot_start if m.shot_end > m.shot_start else 0.0
                 shot_end = m.shot_end if m.shot_end > m.shot_start else clip.duration

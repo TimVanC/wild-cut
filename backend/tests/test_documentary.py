@@ -259,14 +259,25 @@ def test_film_wide_watermark_is_kept(doc_assets, bank):
     try:
         # force=True re-runs filters + classification only (proxy, shots, motion stay cached)
         cache = bankmod.cache_dir_for(Path(doc_assets["dir"]) / doc_assets["path"])
-        (cache / "claude_tags.json").unlink(missing_ok=True)
-        (cache / "bank.json").unlink(missing_ok=True)   # otherwise tags are seeded from the earlier bank and Claude is never asked
+        # set the cached bank/tags aside (otherwise tags are seeded from them and Claude is never asked)
+        # and put them back afterwards: a later run's `bank` fixture must find the good bank.json, since
+        # keyframes are cached and the fake can only classify the ones it saw being extracted
+        saved = {}
+        for name in ("claude_tags.json", "bank.json"):
+            f = cache / name
+            if f.exists():
+                saved[name] = f.read_bytes()
+                f.unlink()
         b = bankmod.analyze_documentary(Path(doc_assets["dir"]) / doc_assets["path"], doc_assets["duration"], "any", client=fake, force=True)
     finally:
         bankmod.extract_frames = real_extract
         settings.data_dir = old
-        (cache / "claude_tags.json").unlink(missing_ok=True)
-        (cache / "bank.json").unlink(missing_ok=True)
+        for name in ("claude_tags.json", "bank.json"):
+            f = cache / name
+            if name in saved:
+                f.write_bytes(saved[name])
+            else:
+                f.unlink(missing_ok=True)
     assert b["rejected"]["text"] <= 5, b["rejected"]
     assert any("watermark" in n for n in b.get("notes", []))
     assert b["animal"] == "any" and b["categories"]["hero"] >= 25
@@ -288,6 +299,16 @@ def test_parse_chapters_and_grouping():
     assert [r["animal"] for r in rows] == ["lion", "emperor penguin"]   # nothing after 1:02:40 in a 400 s span
     assert rows[0]["hero_shots"] == 9 and rows[0]["aura_shots"] == 10 and rows[0]["hero_seconds"] == 36.0   # shot 19 (190-194 s) sits on the 192 s edge, mid 192 -> penguin
     assert rows[1]["hero_shots"] == 11
+    # without chapters, Claude's species variants fold into one group named after the strongest member
+    tags = ["penguin", "emperor penguin", "adelie penguin", "penguin chick", "lyrebird", "bird", "hamster", "european hamster", "lion", "spotted hyena"]
+    shots = [BankShot(index=i, start=10.0 * i, end=10.0 * i + (7.0 if t == "emperor penguin" else 4.0), duration=7.0 if t == "emperor penguin" else 4.0,
+                      species=t, category="hero", score=1.0).to_dict() for i, t in enumerate(tags)]
+    groups = animals_in_bank({"shots": shots}, [])
+    by_name = {g["animal"]: g for g in groups}
+    assert set(by_name) == {"emperor penguin", "lyrebird", "bird", "hamster", "lion", "spotted hyena"}
+    assert sorted(by_name["emperor penguin"]["members"]) == ["adelie penguin", "emperor penguin", "penguin", "penguin chick"]
+    assert by_name["emperor penguin"]["hero_shots"] == 4 and by_name["hamster"]["members"] == ["hamster", "european hamster"]
+    assert by_name["bird"]["members"] == ["bird"], "bird must not swallow lyrebird"
 
 
 def test_generate_one_edit_per_animal(doc_project, doc_assets, bank):

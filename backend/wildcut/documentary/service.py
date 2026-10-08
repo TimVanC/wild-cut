@@ -62,10 +62,14 @@ def shot_animal(shot: BankShot, chapters: list[dict]) -> str:
 
 
 def _same_animal(a: str, b: str) -> bool:
+    """'penguin' ~ 'emperor penguin' ~ 'penguin chick' (whole word), 'lion' ~ 'lions'; 'bird' !~ 'lyrebird'."""
     a, b = a.strip().lower(), b.strip().lower()
     if not a or not b:
         return False
-    return a == b or a in b or b in a or a.rstrip("s") == b.rstrip("s")
+    if a == b or a.rstrip("s") == b.rstrip("s"):
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return re.search(r"\b" + re.escape(short) + r"\b", long_) is not None
 
 
 def animals_in_bank(bank: dict, chapters: list[dict]) -> list[dict]:
@@ -78,17 +82,47 @@ def animals_in_bank(bank: dict, chapters: list[dict]) -> list[dict]:
         name = shot_animal(b, chapters)
         if not name or name == "none":
             continue
-        row = out.setdefault(name, {"animal": name, "hero_shots": 0, "hero_seconds": 0.0, "aura_shots": 0, "first_seen": b.start})
+        row = out.setdefault(name, {"animal": name, "members": [name], "hero_shots": 0, "hero_seconds": 0.0, "aura_shots": 0, "first_seen": b.start})
         if b.category == "hero":
             row["hero_shots"] += 1
             row["hero_seconds"] += b.duration
         else:
             row["aura_shots"] += 1
-    rows = sorted(out.values(), key=lambda r: r["first_seen"])     # film order, like Tim's timestamps
+    rows = list(out.values())
+    if not chapters:
+        # fold Claude's species variants into one group ('emperor penguin', 'adelie penguin' -> penguin),
+        # named after the member with the most HERO seconds; `members` lists every tag in the group
+        groups: list[dict] = []
+        for r in sorted(rows, key=lambda r: len(r["animal"])):      # shortest names seed the groups
+            home = next((g for g in groups if any(_same_animal(m, r["animal"]) for m in g["members"])), None)
+            if home is None:
+                r["_best"] = r["hero_seconds"]
+                groups.append(r)
+                continue
+            if r["hero_seconds"] > home["_best"]:          # name the group after its strongest single tag
+                home["animal"], home["_best"] = r["animal"], r["hero_seconds"]
+            home["members"].append(r["animal"])
+            home["hero_shots"] += r["hero_shots"]
+            home["hero_seconds"] += r["hero_seconds"]
+            home["aura_shots"] += r["aura_shots"]
+            home["first_seen"] = min(home["first_seen"], r["first_seen"])
+        for g in groups:
+            g.pop("_best", None)
+        rows = groups
+    rows = sorted(rows, key=lambda r: r["first_seen"])     # film order, like Tim's timestamps
     for r in rows:
         r["hero_seconds"] = round(r["hero_seconds"], 1)
         r["first_seen"] = round(r["first_seen"], 1)
     return rows
+
+
+def _members_for(name: str, groups: list[dict]) -> list[str]:
+    """Every species tag that belongs with `name` (its group's members), or just the name itself."""
+    n = name.strip().lower()
+    for g in groups:
+        if n == g["animal"] or n in g["members"]:
+            return list(g["members"])
+    return [n]
 
 
 def get_documentary(s: Session, project_id: str) -> Documentary | None:
@@ -240,13 +274,20 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
     chapters = list(doc.chapters or [])
     if animals:
         ok = [b for b in shots if not b.rejected and b.index not in banned]
+        groups = animals_in_bank(bank, chapters)
         sets = []
         for name in animals:
-            mine = [b for b in ok if _same_animal(shot_animal(b, chapters), name)]
+            members = _members_for(name, groups)
+
+            def mine_fn(b: BankShot, members: list[str] = members) -> bool:
+                sa = shot_animal(b, chapters)
+                return sa in members or any(_same_animal(sa, m) for m in members)
+
+            mine = [b for b in ok if mine_fn(b)]
             hero = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in mine if b.category == "hero"]
             aura = [b.to_dict() | {"score": b.score + (0.5 if b.index in starred else 0.0)} for b in mine if b.category == "aura"]
             # establishing shots only from the same animal: a lion edit never opens on hermit crabs
-            broll = [b.to_dict() for b in ok if b.category == "broll" and _same_animal(shot_animal(b, chapters), name)]
+            broll = [b.to_dict() for b in ok if b.category == "broll" and mine_fn(b)]
             if not hero:
                 log.warning("no HERO shots for %s; skipping", name)
                 continue
@@ -279,6 +320,7 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
         edit_animal = st.get("animal") or animal
         child_name = f"{project.name} — {edit_animal}" if st.get("animal") else f"{project.name} — edit {len(doc.edit_project_ids or []) + k + 1}"
         child = Project(name=child_name, style=project.style if project.style != "showdown" else "phonk",
+                        seed=len(doc.edit_project_ids or []) + k + 1,
                         aspect=project.aspect or "9:16", target_length=str(d_opts.get("target", 65)), mode=project.mode,
                         audio_export="silent" if project.audio_export == "original" else project.audio_export, song_path=project.song_path,
                         options={"intensity": (project.options or {}).get("intensity", "med"),
@@ -290,6 +332,7 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
         project_dir(child.id)
         chosen = st["hero"] + st["aura"] + st["broll"][:6]
         order = 0
+        opener_clip_id = None
         for sd in chosen:
             b = BankShot.from_dict(sd)
             order += 1
@@ -302,6 +345,8 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
             s.add(clip)
             s.commit()
             s.refresh(clip)
+            if b.category == "broll" and opener_clip_id is None:
+                opener_clip_id = clip.id          # the rotated partition's first BROLL opens this edit
             for m in _moments_for_shot(clip, b, curve, src_aspect):
                 md = m.to_dict()
                 s.add(MomentRow(id=m.id, project_id=child.id, clip_id=clip.id, in_t=m.in_t, out_t=m.out_t, peak_t=m.peak_t, motion_score=m.motion_score,
@@ -314,6 +359,8 @@ def generate(s: Session, project: Project, count: int | str, progress: Callable[
 
             analyze_song(s, child)
         child.status = "analyzed"
+        if opener_clip_id:
+            child.options = dict(child.options or {}, opener_clip_id=opener_clip_id)
         s.add(child)
         s.commit()
         row = plan_project(s, child, keep_locks=False, note="documentary plan")

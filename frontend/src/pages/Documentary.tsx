@@ -93,7 +93,7 @@ export default function Documentary() {
             {(bank.animals ?? []).map((a: any) => (
               <label key={a.animal} className={`btn btn-sm cursor-pointer ${picked[a.animal] ? 'border-[var(--accent)]' : ''}`}>
                 <input type="checkbox" className="mr-1" checked={!!picked[a.animal]} onChange={e => setPicked(p => ({ ...p, [a.animal]: e.target.checked }))} />
-                {a.animal} <span className="muted ml-1">{a.hero_shots} hero · {Math.round(a.hero_seconds)}s{a.aura_shots ? ` · ${a.aura_shots} aura` : ''}</span>
+                <span title={(a.members ?? []).length > 1 ? `includes: ${a.members.join(', ')}` : undefined}>{a.animal}{(a.members ?? []).length > 1 ? ` (+${a.members.length - 1})` : ''}</span> <span className="muted ml-1">{a.hero_shots} hero · {Math.round(a.hero_seconds)}s{a.aura_shots ? ` · ${a.aura_shots} aura` : ''}</span>
               </label>
             ))}
             {(bank.animals ?? []).length === 0 && <span className="muted text-sm">No animals with HERO shots yet.</span>}

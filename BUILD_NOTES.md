@@ -160,6 +160,15 @@ filters / classification / two distinct edits.
   timestamps ("3:12 emperor penguin", one per line); chapters override the tags for grouping,
   and establishing BROLL is taken only from the same animal (no fallback to other chapters).
   `PUT /documentary/chapters`, `POST /documentary/generate {animals: [...]}`.
+  Without chapters the species tags are folded into groups by whole-word match ("emperor
+  penguin", "adelie penguin", "penguin chick" -> one penguin group named after the strongest
+  tag; "bird" does not swallow "lyrebird"); ticking a group uses every member's shots. On Tim's
+  real compilation this turned 42 raw tags into a usable list.
+- Determinism fix found while testing this: planner jitter was assigned in moment-id order, and
+  moment ids are random uuids, so two plans of the same footage and seed could differ between
+  runs (the "two distinct edits" test was flaky). Jitter is now assigned in a stable order
+  (clip label, source times). Each documentary edit also gets its own seed and an explicit
+  opener (`options.opener_clip_id`, the k-th best BROLL shot), so two edits never open alike.
 - Measured analysis on the synthetic 9.5-minute 960x540 film (Windows, 16 threads): letterbox
   2.4 s, proxy 39 s, shots 54 s, motion 113 s at 20 fps (now 12 fps for documentaries, roughly
   halving it), filters 18 s, classification with the fake client 3 s; about 0.3x to 0.4x of the

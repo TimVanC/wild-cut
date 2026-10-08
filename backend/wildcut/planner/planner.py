@@ -83,7 +83,10 @@ class Planner:
         self.starred = set(req.options.get("starred_moments", []))
         self.pool = [m for m in req.moments if m.id not in self.banned and m.clip_id in self.clips_by_id
                      and m.out_t - m.in_t >= 0.3]
-        self.jitter = {m.id: self.rng.uniform(0.0, 0.08) for m in sorted(self.pool, key=lambda m: m.id)}
+        # jitter in a stable order (clip label, source times): moment ids are random uuids, and sorting by
+        # them made two plans of the same footage and seed differ from run to run
+        stable = sorted(self.pool, key=lambda m: (self.clips_by_id[m.clip_id].label, self.clips_by_id[m.clip_id].path, m.in_t, m.peak_t, m.id))
+        self.jitter = {m.id: self.rng.uniform(0.0, 0.08) for m in stable}
         self.edl = edlmod.empty_edl(req.project_id, req.style, req.aspect, req.mode, req.seed, req.fps)
         self.edl["intensity"] = self.intensity
         self.edl["grade"] = dict(self.preset.get("grade", {}))
