@@ -21,6 +21,7 @@ from wildcut.services.projects import budget_for, project_clips
 
 log = logging.getLogger(__name__)
 MAX_ROUNDS = 12
+TURN_BUDGET_USD = 0.60      # one chat turn may not drain the project (a 16-call turn once cost $1.20)
 HISTORY_MESSAGES = 24
 
 SYSTEM = """You are the Director for Wild Cut, a short-form wildlife edit tool. Tim directs the edit in plain language and you make the changes with tools. The edit decision list (EDL) is the single source of truth; every tool change is saved as a version so Tim can undo.
@@ -123,10 +124,14 @@ def run_turn(s: Session, project: Project, message: str, progress=None) -> dict:
     history[-1] = {"role": "user", "content": [{"type": "text", "text": context_block(ctx) + "\n\nTim: " + message}]}
     messages = history
     reply_text = ""
+    turn_start = budget.spent_usd
     try:
         for round_no in range(MAX_ROUNDS):
             if progress:
                 progress(min(0.9, 0.1 + round_no * 0.07), "thinking")
+            if budget.spent_usd - turn_start > TURN_BUDGET_USD:
+                reply_text = (reply_text + "\n" if reply_text else "") + f"Stopped this turn at ${budget.spent_usd - turn_start:.2f} of Claude spend; the changes so far are saved. Say 'continue' for more."
+                break
             response = client.chat(SYSTEM, messages, tools=TOOLS, budget=budget, max_tokens=3000, note="director")
             blocks = [_block_to_dict(b) for b in response.content]
             messages.append({"role": "assistant", "content": blocks})

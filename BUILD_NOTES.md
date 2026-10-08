@@ -189,6 +189,11 @@ filters / classification / two distinct edits.
   is chosen by tier (subject's own species + action tag, then subject + action in the caption,
   then subject anywhere). Long single clips also got a bigger moment cap (duration / 8 s, 12 to
   60) because 12 moments for a 4.5-minute sequence forced constant reuse.
+- Budget: Tim's third Director turn ("it needs to be completely redone") ran 16 tool calls with
+  frame look-ups and cost about $1.20, which exhausted the $1.50 per-project budget mid-turn and
+  then silently downgraded the next analysis to heuristics (no species tags, so the focus had
+  nothing to match). Default per-project budget is now $5 (Railway variable set to 5.0) and a
+  single Director turn stops at $0.60 of spend with its changes saved.
 - Brief before the first edit (Tim: "I want to direct the AI on my vision and timestamps before it
   creates the edit"): the Footage page has a "Direct the editor first" box saved as
   `options.brief`. The analyze job builds the auto edit as before, then, when Claude is on, hands
