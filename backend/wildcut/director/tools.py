@@ -286,6 +286,12 @@ def t_set_title(ctx: Context, text: str | None = None, time: Any = None, duratio
         t = resolve_time(ctx, time) if time is not None else None
     note = edl_ops.set_title(ctx.edl, text=text, t=t, duration=duration, anchor=anchor)
     ctx.commit(note)
+    if anchor and ctx.project.mode == "music":
+        # an anchored title names the moment that matters: re-fit so the drop lands on it (locks are honored)
+        row = plan_project(ctx.s, ctx.project, keep_locks=True, note="chat: refit to anchored title")
+        ctx.edl = row.json
+        ctx.versions.append(row.version)
+        note += "; drop moved to that moment"
     return {"ok": True, "note": note, "title": next((x for x in ctx.edl["text"] if x.get("kind") != "marker"), None)}
 
 

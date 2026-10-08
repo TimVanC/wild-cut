@@ -184,6 +184,10 @@ filters / classification / two distinct edits.
   2.12 s at 30 fps) is the white flash, frames 63 and 67 are normal, and the serif title is on
   screen from frame 67. Regenerate in the editor afterwards (v6) kept the chat-pinned order
   3, 1, 2 with the hero still on the drop.
+- Director with the live model (after the workspace id arrived): "clip 2 first with the title
+  when the animal jumps, then clip 3, then clip 1" -> Claude called look_at on clip 2, replied
+  that the disc has no real jump and used the top of its rise at source 3.5 s (the clip's true
+  peak), set the order 2, 3, 1 (pinned) and anchored the title to that moment; $0.05 of budget.
 - Cinematic, music-synced, 1:1 (wizard switches the aspect automatically): 5 shots of 3 to 4 s,
   only push-in and fade-to-black effects, the Cormorant title fading in over the hero shot, hero
   on the drop.
