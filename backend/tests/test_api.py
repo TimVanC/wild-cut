@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
 from wildcut.worker import run_pending
 
@@ -180,6 +181,49 @@ def test_showdown_flow_and_export_gate(client, assets):
         assert Path(ex[0]["path"].replace(".mp4", "_stats.csv")).exists()
     finally:
         set_client_for_tests(None)
+
+
+def test_stale_running_jobs_are_requeued(client):
+    from datetime import timedelta
+
+    from wildcut.db import Job, get_engine, now
+    from wildcut.services.jobs import recover_stale
+
+    with Session(get_engine()) as s:
+        dead = Job(project_id="x", kind="analyze", status="running", updated_at=now() - timedelta(minutes=20))
+        live = Job(project_id="x", kind="analyze", status="running", updated_at=now())
+        s.add(dead)
+        s.add(live)
+        s.commit()
+        assert recover_stale(s) == 1
+        s.refresh(dead)
+        s.refresh(live)
+        assert dead.status == "queued" and live.status == "running"
+        assert recover_stale(s, all_running=True) == 1     # worker startup takes the rest
+        s.refresh(live)
+        assert live.status == "queued"
+
+
+def test_song_job_only_analyzes_the_song(client, assets, monkeypatch):
+    """Attaching a song must not re-run clip analysis (Tim waited 8 minutes on 'Analyzing beats')."""
+    pid = client.post("/api/projects", json={"name": "song only", "style": "phonk", "aspect": "9:16", "target_length": "15", "mode": "music"}).json()["id"]
+    calls = {"clips": 0}
+
+    import wildcut.services.analysis as an
+
+    def no_clips(*a, **k):
+        calls["clips"] += 1
+        raise AssertionError("clip analysis must not run for a song-only job")
+
+    monkeypatch.setattr(an, "analyze_project", no_clips)
+    r = client.post(f"/api/projects/{pid}/song", json={"path": str(Path(assets["dir"]) / assets["track"]["path"])})
+    assert r.status_code == 200, r.text
+    run_pending()
+    jobs = client.get(f"/api/projects/{pid}/jobs").json()
+    song_job = next(j for j in jobs if j["payload"].get("only_song"))
+    assert song_job["status"] == "done", song_job
+    assert calls["clips"] == 0
+    assert client.get(f"/api/projects/{pid}/beatgrid").status_code == 200
 
 
 def test_config_and_stock_status(client):

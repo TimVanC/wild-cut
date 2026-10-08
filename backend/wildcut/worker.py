@@ -13,7 +13,7 @@ from sqlmodel import Session
 
 from wildcut.config import get_settings
 from wildcut.db import Project, get_engine
-from wildcut.services.jobs import claim_next, enqueue, run_job
+from wildcut.services.jobs import claim_next, enqueue, recover_stale, run_job
 from wildcut.services.projects import add_clip_from_path, is_media_file
 from wildcut.stock.library import add_local_to_library
 
@@ -90,9 +90,16 @@ def main(poll: float = 0.5, once: bool = False) -> None:
     get_settings().ensure_dirs()
     log.info("worker started (db=%s)", get_settings().db_path)
     last_inbox = 0.0
+    last_recover = 0.0
+    with Session(engine) as s:
+        n = recover_stale(s, all_running=True)      # jobs of the previous worker (crash or redeploy)
+        if n:
+            log.info("re-queued %d job(s) left running by a previous worker", n)
     while True:
         with Session(engine) as s:
-            # recover jobs left "running" by a crashed worker
+            if time.time() - last_recover > 60.0:
+                recover_stale(s)                       # jobs orphaned while this worker was busy
+                last_recover = time.time()
             job = claim_next(s)
             if job is not None:
                 log.info("job %s %s start", job.id, job.kind)

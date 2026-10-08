@@ -34,6 +34,31 @@ def enqueue(s: Session, project_id: str, kind: str, payload: dict | None = None)
     return job
 
 
+STALE_RUNNING_SECONDS = 15 * 60
+
+
+def recover_stale(s: Session, max_age: float = STALE_RUNNING_SECONDS, all_running: bool = False) -> int:
+    """Re-queue jobs left "running" by a worker that died (crash, or the old container of a deploy).
+    A live job reports progress at least every few minutes; one silent for `max_age` is dead.
+    `all_running=True` re-queues every running job (worker startup: the previous worker is gone)."""
+    from datetime import timedelta
+
+    rows = s.exec(select(Job).where(Job.status == "running")).all()
+    cutoff = now() - timedelta(seconds=max_age)
+    n = 0
+    for job in rows:
+        upd = job.updated_at if job.updated_at.tzinfo else job.updated_at.replace(tzinfo=cutoff.tzinfo)
+        if all_running or upd < cutoff:
+            job.status = "queued"
+            job.message = "restarted after the worker stopped"
+            job.updated_at = now()
+            s.add(job)
+            n += 1
+    if n:
+        s.commit()
+    return n
+
+
 def claim_next(s: Session) -> Job | None:
     job = s.exec(select(Job).where(Job.status == "queued").order_by(Job.created_at)).first()
     if job is None:
@@ -106,6 +131,14 @@ def _analyze(s: Session, job: Job, progress) -> dict:
     from wildcut.services.analysis import analyze_project
 
     project = s.get(Project, job.project_id)
+    if job.payload.get("only_song"):
+        # a new song never needs the clips re-analyzed
+        from wildcut.services.analysis import analyze_song
+
+        progress(0.05, "analyzing the song")
+        analyze_song(s, project, progress)
+        progress(1.0, "music: done")
+        return {}
     analyze_project(s, project, progress, only_unanalyzed=not job.payload.get("force"))
     if job.payload.get("then_plan", True):
         from wildcut.services.planning import plan_project

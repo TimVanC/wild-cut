@@ -283,6 +283,37 @@ def test_film_wide_watermark_is_kept(doc_assets, bank):
     assert b["animal"] == "any" and b["categories"]["hero"] >= 25
 
 
+def test_compilation_promotes_other_animals(doc_assets, bank):
+    """With cached tags from the old prompt, a compilation ('any') still counts every animal's action as HERO."""
+    import wildcut.documentary.bank as bankmod
+    from wildcut.config import get_settings
+
+    settings = get_settings()
+    old = settings.data_dir
+    settings.data_dir = Path(bank["_data_dir"])
+    cache = bankmod.cache_dir_for(Path(doc_assets["dir"]) / doc_assets["path"])
+    saved = {n: (cache / n).read_bytes() for n in ("claude_tags.json", "bank.json") if (cache / n).exists()}
+    try:
+        tags = json.loads(saved["claude_tags.json"])
+        # pretend the old prompt called every disc shot a different animal's OTHER
+        for t in tags.values():
+            if t.get("category") in ("hero", "aura") and not t.get("has_people"):
+                t["category"] = "other"
+                t["species"] = "ring"
+        (cache / "claude_tags.json").write_text(json.dumps(tags), encoding="utf-8")
+        (cache / "bank.json").unlink(missing_ok=True)
+        b = bankmod.analyze_documentary(Path(doc_assets["dir"]) / doc_assets["path"], doc_assets["duration"], "any",
+                                        client=FakeDocClaude(doc_assets["segments"]), force=True)
+    finally:
+        settings.data_dir = old
+        for n in ("claude_tags.json", "bank.json"):
+            if n in saved:
+                (cache / n).write_bytes(saved[n])
+    assert b["animal"] == "any"
+    assert b["categories"]["hero"] >= 20 and b["categories"]["other"] < 10, b["categories"]
+    assert any("promoted" in n for n in b["notes"])
+
+
 def test_parse_chapters_and_grouping():
     from wildcut.documentary.bank import BankShot
     from wildcut.documentary.service import animals_in_bank, parse_chapters, shot_animal

@@ -164,6 +164,18 @@ filters / classification / two distinct edits.
   penguin", "adelie penguin", "penguin chick" -> one penguin group named after the strongest
   tag; "bird" does not swallow "lyrebird"); ticking a group uses every member's shots. On Tim's
   real compilation this turned 42 raw tags into a usable list.
+- Tim's re-upload of the same film got a fresh Claude pass that marked 207 of 333 shots OTHER
+  (14 of 26 lion shots, including "Lion confronts hyenas"): the auto prompt said "identify the
+  main animal", so each batch picked one species and demoted the rest. The prompt now says every
+  wild animal is the target when no species is fixed, and in compilation mode cached OTHER tags
+  with a real species are promoted to HERO (intensity >= 4) or AURA, noted in the bank. Re-analysis
+  reuses the cached tags, so the fix costs nothing.
+- Server fixes from the same session: attaching a song enqueued a full "analyze" job that re-ran
+  clip analysis before the song (Tim waited 8 minutes on "Analyzing beats"); `only_song` now runs
+  just the beat analysis. A worker replaced during a deploy left its job "running" forever;
+  the worker re-queues running jobs at startup and any job silent for 15 minutes.
+- Previews were concatenated video-only, so the editor played silent even with a song attached;
+  the song window is muxed into every preview now (exports still follow the audio setting).
 - Determinism fix found while testing this: planner jitter was assigned in moment-id order, and
   moment ids are random uuids, so two plans of the same footage and seed could differ between
   runs (the "two distinct edits" test was flaky). Jitter is now assigned in a stable order

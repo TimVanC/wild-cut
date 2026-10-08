@@ -85,6 +85,7 @@ DOC_SYSTEM = ("You classify shots from a nature documentary for a short-form edi
 
 REJECTING_TEXT = {"subtitle", "lower_third", "title_card", "credits", "map", "other"}
 MULTI = "any"
+NON_ANIMAL = {"none", "human", "humans", "person", "people", "presenter", "man", "woman", "crew", "unknown", "n/a", ""}
 
 
 def file_key(path: Path) -> str:
@@ -302,7 +303,13 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
         for start in range(0, len(order), SHOTS_PER_CALL):
             batch = order[start:start + SHOTS_PER_CALL]
             step(0.6 + 0.3 * start / max(1, len(order)), f"Claude classifying shots {start}/{len(order)}")
-            content: list[dict] = [{"type": "text", "text": f"Target animal: {animal if animal != 'auto' else 'unknown (identify the main animal)'}. {len(batch)} shots, one keyframe each."}]
+            if animal in ("auto", "", MULTI):
+                target_text = ("No fixed target animal: this may be a compilation of many species. Treat EVERY wild animal as the "
+                               "target: hero = any animal doing something, aura = any animal posing or in close-up. Use 'other' only "
+                               "for people/presenters/crew, pure graphics, or frames with no animal at all.")
+            else:
+                target_text = f"Target animal: {animal}."
+            content: list[dict] = [{"type": "text", "text": f"{target_text} {len(batch)} shots, one keyframe each."}]
             for k, b in enumerate(batch):
                 mid = (b.start + b.end) / 2
                 fr = extract_frames(proxy, [mid], width=448)
@@ -354,6 +361,16 @@ def analyze_documentary(src: str | Path, duration: float | None = None, animal: 
         for b in bank_shots:
             if not b.rejected and b.category in ("hero", "aura") and b.species and b.species not in ("none", target) and b.classified_by == "claude":
                 b.category = "other"
+    if target == MULTI:
+        # tags cached from the old prompt ("identify the main animal") called other animals' action OTHER;
+        # in a compilation any animal doing something is HERO and any animal posing is AURA
+        promoted = 0
+        for b in bank_shots:
+            if not b.rejected and b.category == "other" and b.classified_by == "claude" and b.species and b.species not in NON_ANIMAL:
+                b.category = "hero" if (b.intensity or 0) >= 4 else "aura"
+                promoted += 1
+        if promoted:
+            notes.append(f"{promoted} shots of non-dominant animals were promoted from OTHER to HERO/AURA (compilation mode).")
     for b in bank_shots:
         if not b.rejected:
             b.score = score_shot(b)
