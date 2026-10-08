@@ -292,4 +292,5 @@ def test_focus_makes_the_subject_the_hero_and_the_title(footage, grid):
     # the iguana moment also outranks snake moments elsewhere in the edit (plural/verb forms match)
     from wildcut.planner.planner import _words
 
-    assert _words("The iguanas escaping the snakes") == {"iguana", "escap", "snake"} or "iguana" in _words("iguanas")
+    from wildcut.planner.planner import _overlap
+    assert _overlap(_words("the iguanas escaping"), {"iguana"}) and _overlap({"escape"}, {"escapes"}) and not _overlap({"bird"}, {"lyrebird"})

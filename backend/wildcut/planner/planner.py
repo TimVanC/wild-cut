@@ -35,17 +35,21 @@ STOP_WORDS = {"the", "a", "an", "of", "and", "its", "it", "is", "to", "from", "b
 
 
 def _words(text: str) -> set[str]:
-    """Lowercase content words with a crude singular form, so 'iguanas' matches 'iguana' and 'escaping' matches 'escape'."""
-    out = set()
-    for w in re.findall(r"[a-z]+", (text or "").lower()):
-        if w in STOP_WORDS or len(w) < 3:
-            continue
-        for suffix in ("ing", "es", "s", "ed"):
-            if w.endswith(suffix) and len(w) - len(suffix) >= 3:
-                w = w[: -len(suffix)]
-                break
-        out.add(w)
-    return out
+    """Lowercase content words (no stemming; see _overlap)."""
+    return {w for w in re.findall(r"[a-z]+", (text or "").lower()) if w not in STOP_WORDS and len(w) >= 3}
+
+
+def _overlap(a: set[str], b: set[str]) -> bool:
+    """Two word sets share a word when one word is a prefix of the other with at least 4 letters in common:
+    iguana/iguanas, escape/escapes/escaping, swing/swings, fight/fighting."""
+    for x in a:
+        for y in b:
+            short, long_ = (x, y) if len(x) <= len(y) else (y, x)
+            if len(short) >= 4 and long_.startswith(short):
+                return True
+            if short == long_:
+                return True
+    return False
 
 
 @dataclass
@@ -107,7 +111,7 @@ class Planner:
         for m in req.moments:
             if m.species and m.species not in UNKNOWN_SPECIES:
                 others |= _words(m.species)
-        self.focus_action = _words(focus.get("action", "")) - self.focus_subject - (others - self.focus_subject)
+        self.focus_action = {w for w in _words(focus.get("action", "")) if not _overlap({w}, self.focus_subject) and not _overlap({w}, others - self.focus_subject)}
         self.pool = [m for m in req.moments if m.id not in self.banned and m.clip_id in self.clips_by_id
                      and m.out_t - m.in_t >= 0.3]
         # jitter in a stable order (clip label, source times): moment ids are random uuids, and sorting by
@@ -142,7 +146,7 @@ class Planner:
         tier = self.focus_tier(m)
         if tier == 0:
             return -0.5
-        bonus = 0.6 + (0.2 if self.focus_subject & _words(m.species) else 0.0)
+        bonus = 0.6 + (0.2 if _overlap(self.focus_subject, _words(m.species)) else 0.0)
         if tier >= 2:
             bonus += 0.4
         return bonus
@@ -153,11 +157,11 @@ class Planner:
         if not self.focus_subject:
             return 0
         species, action, caption = _words(m.species), _words(m.action), _words(m.caption_hint)
-        if not (self.focus_subject & (species | action | caption)):
+        if not _overlap(self.focus_subject, species | action | caption):
             return 0
-        if self.focus_action and (self.focus_action & action) and (self.focus_subject & species):
+        if self.focus_action and _overlap(self.focus_action, action) and _overlap(self.focus_subject, species):
             return 3
-        if self.focus_action and (self.focus_action & (action | caption)):
+        if self.focus_action and _overlap(self.focus_action, action | caption):
             return 2
         return 1
 
