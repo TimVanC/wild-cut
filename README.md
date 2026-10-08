@@ -56,6 +56,10 @@ are still better added from a mounted path or the inbox folder on a volume).
 - Railway: the repo deploys as-is (Dockerfile auto-detected, `railway.toml` sets the healthcheck). Attach a
   volume at `/app/data` (SQLite, proxies, previews, exports, inbox) and set the variables from `.env.example`.
 - Docker: `docker compose up` builds the same image, maps port 8787 and mounts `./data`.
+- Vercel (UI only): the `frontend/` folder deploys as a static Vite site; it calls the Railway backend. The
+  API base comes from `VITE_API_BASE`, and defaults to the Railway URL on any non-local host. Images, video
+  and the event stream carry the access token as a `token` query parameter because cookies do not cross
+  origins; fetches send it as the `X-Wildcut-Token` header. `frontend/vercel.json` adds the SPA rewrite.
 - Set `WILDCUT_ACCESS_TOKEN` whenever the port is reachable from the internet: the UI asks for the token once
   and stores it in a cookie; every `/api` call without it gets a 401. There is no other auth (single user).
 

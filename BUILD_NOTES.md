@@ -224,6 +224,13 @@ filters / classification / two distinct edits.
   stock import, or by files placed in the inbox on the volume; "add by path" only sees the
   container's filesystem. Exports are downloaded from the export dialog's player
   (right-click, save) or via `/api/media?path=...` with the token cookie.
+- Vercel: Tim deployed `frontend/` as a static Vite site (https://wild-cut.vercel.app). The UI
+  now targets the Railway API when it runs on a non-local host (`VITE_API_BASE` overrides; the
+  Vercel env var could not be set from here, so the Railway URL is the built-in default). The
+  token travels as a header on fetches and as a `token` query parameter on image / video / SSE
+  URLs. The token guard had to let CORS preflights through and put CORS headers on its 401s,
+  otherwise the browser reported a network error instead of prompting for the token. Verified:
+  the Vercel UI lists and opens the server's projects.
 - Verified live: health check, token guard (401 without it), UI token gate, and an upload of two
   synthetic clips followed by analysis and planning inside the container (ffmpeg, OpenCV,
   librosa all working on the Railway image).
