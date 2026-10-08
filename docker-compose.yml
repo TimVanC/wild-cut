@@ -1,44 +1,17 @@
-# Docker alternative to `make dev`: ffmpeg is bundled in the backend image.
-# Local footage paths you type into the UI must be visible inside the containers:
-# mount the folders you use under /media (see the `volumes` below) and refer to them as /media/...
+# Docker alternative to `make dev`: one container runs the API + worker and serves the built UI
+# on http://localhost:8787 (ffmpeg bundled). Footage is added by upload or by dropping files
+# into ./data/inbox (mounted). Set WILDCUT_ACCESS_TOKEN in .env if the port is reachable from outside.
 services:
-  api:
+  app:
     build: .
-    command: python -m wildcut.api
     env_file: .env
     environment:
+      - PORT=8787
       - DATA_DIR=/app/data
-      - INBOX_DIR=/app/inbox
-      - EXPORTS_DIR=/app/exports
+      - INBOX_DIR=/app/data/inbox
+      - EXPORTS_DIR=/app/data/exports
     ports:
       - "8787:8787"
     volumes:
       - ./data:/app/data
-      - ./inbox:/app/inbox
-      - ./exports:/app/exports
       - ${MEDIA_DIR:-./inbox}:/media:ro
-  worker:
-    build: .
-    command: python -m wildcut.worker
-    env_file: .env
-    environment:
-      - DATA_DIR=/app/data
-      - INBOX_DIR=/app/inbox
-      - EXPORTS_DIR=/app/exports
-    volumes:
-      - ./data:/app/data
-      - ./inbox:/app/inbox
-      - ./exports:/app/exports
-      - ${MEDIA_DIR:-./inbox}:/media:ro
-  frontend:
-    image: node:22-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    environment:
-      - API_PORT=8787
-    volumes:
-      - ./frontend:/app
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api

@@ -47,6 +47,18 @@ runs (motion-only tags, placeholder title, offline Director commands) and the UI
 - **Director chat** in the editor: "clip 2 first, title when it lets go of the branch, then clip 3". Anything you
   specify is pinned and survives Regenerate.
 
+## Running on a server (Railway or Docker)
+
+The `Dockerfile` builds the React app and runs API + worker in one container; FastAPI serves the built UI
+and the whole app sits on one port (`PORT`). Footage is added by drag-and-drop upload (multi-GB documentaries
+are still better added from a mounted path or the inbox folder on a volume).
+
+- Railway: the repo deploys as-is (Dockerfile auto-detected, `railway.toml` sets the healthcheck). Attach a
+  volume at `/app/data` (SQLite, proxies, previews, exports, inbox) and set the variables from `.env.example`.
+- Docker: `docker compose up` builds the same image, maps port 8787 and mounts `./data`.
+- Set `WILDCUT_ACCESS_TOKEN` whenever the port is reachable from the internet: the UI asks for the token once
+  and stores it in a cookie; every `/api` call without it gets a 401. There is no other auth (single user).
+
 ## Layout
 
 - `backend/wildcut/` Python package: `api` (FastAPI), `worker` (job runner), `analysis/`

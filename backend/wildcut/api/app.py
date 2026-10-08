@@ -897,3 +897,42 @@ def browse(path: str | None = None) -> dict:
 
 # documentary routes live in their own module
 from wildcut.api import documentary as _documentary_routes  # noqa: E402,F401
+
+
+# ---------------------------------------------------------------- server mode: access token + built frontend
+import os as _os  # noqa: E402
+from fastapi import Request as _Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from wildcut.config import REPO_ROOT as _ROOT  # noqa: E402
+
+_ACCESS_TOKEN = _os.environ.get("WILDCUT_ACCESS_TOKEN", "").strip()
+
+
+@app.middleware("http")
+async def _access_token_guard(request: _Request, call_next):
+    """When WILDCUT_ACCESS_TOKEN is set (public server), every /api call needs the token
+    (header X-Wildcut-Token, ?token=, or the wc_token cookie the UI sets after you enter it)."""
+    if _ACCESS_TOKEN and request.url.path.startswith("/api") and request.url.path != "/api/health":
+        supplied = request.headers.get("x-wildcut-token") or request.query_params.get("token") or request.cookies.get("wc_token")
+        if supplied != _ACCESS_TOKEN:
+            return JSONResponse({"detail": "access token required"}, status_code=401)
+    return await call_next(request)
+
+
+@app.get("/api/auth")
+def auth_status(request: _Request) -> dict:
+    """Lets the UI know whether a token is required (the guard above already validated it if so)."""
+    return {"required": bool(_ACCESS_TOKEN), "ok": True}
+
+
+_DIST = _ROOT / "frontend" / "dist"
+if (_DIST / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def _spa(full_path: str) -> FileResponse:
+        candidate = _DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(_DIST / "index.html"))

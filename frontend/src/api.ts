@@ -47,12 +47,20 @@ export type Config = {
 
 export class ApiError extends Error { status: number; constructor(status: number, msg: string) { super(msg); this.status = status } }
 
+export function getToken(): string { try { return localStorage.getItem('wc_token') ?? '' } catch { return '' } }
+export function setToken(t: string) {
+  try { localStorage.setItem('wc_token', t) } catch { /* ignore */ }
+  // the cookie lets <img>, <video> and EventSource requests carry the token too
+  document.cookie = `wc_token=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`
+}
+
 async function req<T>(method: string, url: string, body?: unknown, raw?: BodyInit): Promise<T> {
-  const r = await fetch(url, {
-    method,
-    headers: raw ? undefined : body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined),
-  })
+  const headers: Record<string, string> = {}
+  if (!raw && body !== undefined) headers['Content-Type'] = 'application/json'
+  const tok = getToken()
+  if (tok) headers['X-Wildcut-Token'] = tok
+  const r = await fetch(url, { method, headers, body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined) })
+  if (r.status === 401) { window.dispatchEvent(new CustomEvent('wc-auth-required')) }
   if (!r.ok) {
     let msg = r.statusText
     try { const j = await r.json(); msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail ?? j) } catch { /* ignore */ }

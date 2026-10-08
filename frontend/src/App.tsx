@@ -1,6 +1,7 @@
+import React, { useEffect, useState } from 'react'
 import { NavLink, Route, Routes, useParams, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api } from './api'
+import { api, getToken, setToken } from './api'
 import Projects from './pages/Projects'
 import NewProject from './pages/NewProject'
 import Footage from './pages/Footage'
@@ -57,12 +58,36 @@ function ProjectShell() {
   )
 }
 
+function TokenGate({ children }: { children: React.ReactNode }) {
+  const [need, setNeed] = useState(false)
+  const [val, setVal] = useState('')
+  useEffect(() => {
+    const on = () => setNeed(true)
+    window.addEventListener('wc-auth-required', on)
+    fetch('/api/auth', { headers: getToken() ? { 'X-Wildcut-Token': getToken() } : {} }).then(r => { if (r.status === 401) setNeed(true) }).catch(() => {})
+    return () => window.removeEventListener('wc-auth-required', on)
+  }, [])
+  if (!need) return <>{children}</>
+  return (
+    <div className="h-full flex items-center justify-center p-6">
+      <div className="card p-6 w-[380px] flex flex-col gap-3">
+        <div className="font-semibold tracking-wide">WILD<span style={{ color: 'var(--accent)' }}>CUT</span></div>
+        <div className="text-sm muted">This server requires an access token (WILDCUT_ACCESS_TOKEN on the server).</div>
+        <input className="input" type="password" placeholder="access token" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && val) { setToken(val); location.reload() } }} autoFocus />
+        <button className="btn btn-primary" disabled={!val} onClick={() => { setToken(val); location.reload() }}>Enter</button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
+    <TokenGate>
     <Routes>
       <Route path="/" element={<Projects />} />
       <Route path="/new" element={<NewProject />} />
       <Route path="/p/:id/*" element={<ProjectShell />} />
     </Routes>
+    </TokenGate>
   )
 }
