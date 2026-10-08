@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from wildcut.db import Project, get_engine
 from wildcut.director.tools import Context, resolve_clip, run_tool
@@ -133,3 +133,25 @@ def test_set_hero_puts_tims_moment_on_the_drop(project, assets):
         assert not err, res
         hero = next(c for c in ctx.edl["clips"] if c["role"] == "hero")
         assert hero["moment_id"] == m2.id
+
+
+def test_set_focus_rebuilds_the_edit_around_the_subject(project):
+    with Session(get_engine()) as s:
+        ctx = _ctx(s, project)
+        # give one clip's moments a distinct species so the focus has something to find
+        target = ctx.clips[1]
+        for m in ctx.moments:
+            if m.clip_id == target.id:
+                m.species, m.caption_hint = "gibbon", "gibbon swings away"
+        from wildcut.db import Moment as MomentRow
+
+        for row in s.exec(select(MomentRow).where(MomentRow.clip_id == target.id)).all():
+            row.species, row.caption_hint = "gibbon", "gibbon swings away"
+            s.add(row)
+        s.commit()
+        res, err = run_tool(ctx, "set_focus", {"subject": "gibbon", "action": "swings"})
+        assert not err, res
+        hero = next(c for c in ctx.edl["clips"] if c["role"] == "hero")
+        assert hero["clip_id"] == target.id
+        assert ctx.edl["text"][0]["text"] == "THE GIBBON"
+        assert (ctx.project.options or {}).get("focus") == {"subject": "gibbon", "action": "swings"}

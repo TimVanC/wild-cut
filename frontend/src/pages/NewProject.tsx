@@ -17,11 +17,14 @@ export default function NewProject() {
   const [intensity, setIntensity] = useState('med')
   const [docPath, setDocPath] = useState('')
   const [animal, setAnimal] = useState('')
+  const [subject, setSubject] = useState('')
+  const [action, setAction] = useState('')
   const [edits, setEdits] = useState('as_many')
   const create = useMutation({
     mutationFn: async () => {
       const preset = cfg.data?.presets.find(p => p.id === style)
       const options: Record<string, any> = { intensity }
+      if (!isDoc && subject.trim()) options.focus = { subject: subject.trim(), action: action.trim() }
       if (isDoc) options.documentary = { path: docPath.trim() || undefined, animal: animal.trim() || 'auto', edits, target_min: 60, target_max: 70 }
       return api.createProject({ name: name.trim() || (isDoc ? 'Documentary edits' : 'Untitled'), style, aspect: aspect || preset?.default_aspect, target_length: isDoc ? '65' : length, mode, audio_export: audio, options } as any)
     },
@@ -45,6 +48,15 @@ export default function NewProject() {
             <div><label className="label">Number of edits</label><select className="input" value={edits} onChange={e => setEdits(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="as_many">as many as the footage supports</option></select></div>
           </div>
         </>)}
+        {!isDoc && (
+          <div>
+            <label className="label">This edit is about (you can change it later on the Footage tab)</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" placeholder="the animal, e.g. iguana" value={subject} onChange={e => setSubject(e.target.value)} />
+              <input className="input" placeholder="what it does, e.g. escapes the snakes" value={action} onChange={e => setAction(e.target.value)} />
+            </div>
+          </div>
+        )}
         <div>
           <label className="label">Style</label>
           <div className="grid grid-cols-2 gap-2">

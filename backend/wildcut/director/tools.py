@@ -357,6 +357,29 @@ def t_set_speed_ramp(ctx: Context, clip: Any, slow_rate: float | None = 0.4, sou
     return {"ok": True, "note": note}
 
 
+def t_set_focus(ctx: Context, subject: str, action: str | None = None, **_) -> dict:
+    """What the edit is about. Re-plans everything unlocked: the subject's key action becomes the hero on the drop,
+    shots without the subject only build tension, the title becomes THE <SUBJECT>."""
+    subject = (subject or "").strip().lower()
+    if not subject:
+        raise ToolError("subject is required")
+    opts = dict(ctx.project.options or {})
+    opts["focus"] = {"subject": subject, "action": (action or "").strip().lower()}
+    opts.pop("title", None)
+    ctx.project.options = opts
+    ctx.s.add(ctx.project)
+    ctx.s.commit()
+    row = plan_project(ctx.s, ctx.project, keep_locks=False, note=f"chat: focus {subject}")
+    ctx.edl = row.json
+    ctx.versions.append(row.version)
+    ctx.changed = True
+    hero = next((c for c in ctx.edl["clips"] if c.get("role") == "hero"), None)
+    shown = sum(1 for c in ctx.edl["clips"] if subject in f"{c.get('species', '')} {c.get('caption_hint', '')}".lower())
+    return {"ok": True, "note": f"the edit is now about the {subject}" + (f" ({action})" if action else ""),
+            "hero": {"clip": hero.get("label"), "source_time": hero.get("peak"), "caption": hero.get("caption_hint")} if hero else None,
+            "clips_showing_subject": shown, "edit": summarize_edit(ctx)}
+
+
 def t_set_hero(ctx: Context, clip: Any, source_time: float, **_) -> dict:
     """Make the moment at a source time the hero (it lands on the drop); creates a moment there if none was detected."""
     from wildcut.analysis.moments import Moment as MomentData
@@ -493,6 +516,7 @@ TOOL_IMPLS = {
     "set_song_window": t_set_song_window, "plan_auto": t_plan_auto, "render_preview": t_render_preview, "undo": t_undo,
     "set_lock": t_set_lock,
     "set_frame": t_set_frame,
+    "set_focus": t_set_focus,
     "set_hero": t_set_hero,
 }
 
@@ -514,6 +538,7 @@ TOOLS: list[dict] = [
     {"name": "toggle_effect", "description": "Enable or disable one effect.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["effect_id", "enabled"]}},
     {"name": "set_intensity", "description": "Set effect intensity (low/med/high) for one effect or all effects.", "input_schema": {"type": "object", "properties": {"intensity": {"type": "string", "enum": ["low", "med", "high"]}, "effect_id": {"type": "string"}}, "required": ["intensity"]}},
     {"name": "set_speed_ramp", "description": "Put a slow-motion ramp on a clip around a source time (slow_rate 0.3-0.7), or remove it (slow_rate null/1).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "slow_rate": {"type": ["number", "null"]}, "source_time": {"type": "number"}}, "required": ["clip"]}},
+    {"name": "set_focus", "description": "Declare what the edit is about and rebuild it around that: subject (the animal or thing, e.g. 'iguana') and optionally its key action (e.g. 'escape'). Moments showing the subject rank first, its key action becomes the hero on the drop, other animals only build tension, the title becomes THE <SUBJECT>. Use whenever Tim says what the edit is about or that it is built around the wrong animal; it replaces unpinned clips.", "input_schema": {"type": "object", "properties": {"subject": {"type": "string"}, "action": {"type": "string"}}, "required": ["subject"]}},
     {"name": "set_hero", "description": "Make the moment at a source time of a clip the hero: it is placed so its peak lands on the drop (or the visual payoff) with the slow-mo ramp, and it is pinned. Use for the moment Tim calls the biggest / the payoff / 'the drop should hit when...'. Creates the moment if analysis did not detect one there.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}}, "required": ["clip", "source_time"]}},
     {"name": "set_frame", "description": "How a clip sits in the vertical canvas. 'fill' crops it to fill the whole frame (default). An aspect such as '1.2:1', '4:3' or '16:9' shows the clip as a centered box of that shape at full width with black above and below, which suits wide shots that crop badly to 9:16. Omit clip (or 'all') to apply to every clip and make it the project default.", "input_schema": {"type": "object", "properties": {"frame": {"type": "string", "description": "'fill', '1.2:1', '1:1', '4:3', '16:9', or a w/h number as text"}, "clip": _CLIP}, "required": ["frame"]}},
     {"name": "set_style", "description": "Switch the style preset (phonk, cinematic, chase) and optionally the aspect; re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"style": {"type": "string"}, "aspect": {"type": "string", "enum": ["9:16", "1:1", "4:5", "3:4"]}}, "required": ["style"]}},

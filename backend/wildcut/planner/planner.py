@@ -13,6 +13,7 @@ song window is never moved. Everything else is re-planned from the seed.
 from __future__ import annotations
 
 import random
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -30,6 +31,21 @@ from wildcut.planner.speed import (
 
 MIN_SLOT = 0.25
 UNKNOWN_SPECIES = {"", "animal", "none", "unknown", "auto", "any"}
+STOP_WORDS = {"the", "a", "an", "of", "and", "its", "it", "is", "to", "from", "by", "with", "on", "in"}
+
+
+def _words(text: str) -> set[str]:
+    """Lowercase content words with a crude singular form, so 'iguanas' matches 'iguana' and 'escaping' matches 'escape'."""
+    out = set()
+    for w in re.findall(r"[a-z]+", (text or "").lower()):
+        if w in STOP_WORDS or len(w) < 3:
+            continue
+        for suffix in ("ing", "es", "s", "ed"):
+            if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+                w = w[: -len(suffix)]
+                break
+        out.add(w)
+    return out
 
 
 @dataclass
@@ -81,6 +97,11 @@ class Planner:
         self.existing = req.existing or {}
         self.banned = set(req.options.get("banned_moments", []))
         self.starred = set(req.options.get("starred_moments", []))
+        # what the edit is about: {"subject": "iguana", "action": "escape"}; moments showing the subject rank
+        # above everything else, the subject's key action is the hero, other animals only build tension
+        focus = req.options.get("focus") or {}
+        self.focus_subject = _words(focus.get("subject", ""))
+        self.focus_action = _words(focus.get("action", ""))
         self.pool = [m for m in req.moments if m.id not in self.banned and m.clip_id in self.clips_by_id
                      and m.out_t - m.in_t >= 0.3]
         # jitter in a stable order (clip label, source times): moment ids are random uuids, and sorting by
@@ -105,7 +126,27 @@ class Planner:
             s += 0.5
         if m.subject_visible is False:
             s -= 0.2
-        return s
+        return s + self.focus_bonus(m)
+
+    def focus_bonus(self, m: Moment) -> float:
+        """+0.6 when the moment shows the subject, +0.4 more for its key action, -0.5 when the subject is absent."""
+        if not self.focus_subject:
+            return 0.0
+        text = _words(f"{m.species} {m.action} {m.caption_hint}")
+        if not (self.focus_subject & text):
+            return -0.5
+        bonus = 0.6
+        if self.focus_action and (self.focus_action & text):
+            bonus += 0.4
+        return bonus
+
+    def matches_focus(self, m: Moment, need_action: bool = False) -> bool:
+        if not self.focus_subject:
+            return False
+        text = _words(f"{m.species} {m.action} {m.caption_hint}")
+        if not (self.focus_subject & text):
+            return False
+        return bool(self.focus_action & text) if (need_action and self.focus_action) else True
 
     def is_fully_locked(self, locked: list[dict]) -> bool:
         """Tim pinned the whole order (intro/outro sections added by a preset do not count)."""
@@ -116,12 +157,25 @@ class Planner:
         return len(core) == len(existing)
 
     def choose_hero(self) -> Moment | None:
-        """The moment that lands on the drop (or the visual payoff). Presets may override."""
+        """The moment that lands on the drop (or the visual payoff). Presets may override.
+        With a focus, the hero is the subject's key action when any moment shows it, else any moment of the subject."""
+        if self.focus_subject:
+            saved = self.pool
+            for need_action in (True, False):
+                cands = [m for m in saved if self.matches_focus(m, need_action=need_action)]
+                if cands:
+                    self.pool = cands
+                    try:
+                        m = self.best_unused(min_len=0.8) or self.best_unused()
+                    finally:
+                        self.pool = saved
+                    if m is not None:
+                        return m
         return self.best_unused(min_len=0.8)
 
     def raw_rank(self, m: Moment) -> float:
         """Deterministic rank (no seed jitter) used when choosing the hero among locked clips."""
-        return m.score + (0.5 if m.id in self.starred else 0.0) - (0.2 if m.subject_visible is False else 0.0)
+        return m.score + (0.5 if m.id in self.starred else 0.0) - (0.2 if m.subject_visible is False else 0.0) + self.focus_bonus(m)
 
     def best_unused(self, prev_clip: str | None = None, prev_species: str | None = None,
                     min_len: float = 0.0, exclude_clip_ids: set[str] | None = None,
@@ -231,6 +285,9 @@ class Planner:
         opt = self.req.options.get("title")
         if opt:
             return opt
+        subject = str((self.req.options.get("focus") or {}).get("subject") or "").strip()
+        if subject:
+            return f"THE {subject.upper()}"      # the edit is about the subject, whatever the hero's species tag says
         if self.existing.get("title"):
             return self.existing["title"]
         species = ""

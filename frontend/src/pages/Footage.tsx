@@ -12,6 +12,8 @@ export default function Footage() {
   const qc = useQueryClient()
   const snap = useEvents(pid)
   const [brief, setBrief] = useState<string | null>(null)
+  const [subject, setSubject] = useState<string | null>(null)
+  const [action, setAction] = useState<string | null>(null)
   const nav = useNavigate()
   const cfg = useQuery({ queryKey: ['config'], queryFn: api.config })
   const project = useQuery({ queryKey: ['project', pid], queryFn: () => api.project(pid) })
@@ -33,8 +35,15 @@ export default function Footage() {
   const search = useMutation({ mutationFn: () => api.stockSearch(q, orientation || undefined), onError: (e: Error) => setErr(e.message) })
   const importStock = useMutation({ mutationFn: () => api.stockImport(pid, Object.values(picked)), onSuccess: () => { setPicked({}); invalidate() } })
   const saveBrief = useMutation({ mutationFn: (text: string) => api.patchProject(pid, { options: { brief: text } } as any), onSuccess: invalidate })
+  const saveFocus = useMutation({ mutationFn: (f: { subject: string; action: string }) => api.patchProject(pid, { options: { focus: f } } as any), onSuccess: invalidate })
+  const focusNow = () => ({ subject: (subject ?? project.data?.options?.focus?.subject ?? '').trim(), action: (action ?? project.data?.options?.focus?.action ?? '').trim() })
   const analyze = useMutation({
-    mutationFn: async () => { if (brief !== null && brief !== (project.data?.options?.brief ?? '')) await saveBrief.mutateAsync(brief); return api.analyze(pid, true) },
+    mutationFn: async () => {
+      const f = focusNow()
+      if (f.subject !== (project.data?.options?.focus?.subject ?? '') || f.action !== (project.data?.options?.focus?.action ?? '')) await saveFocus.mutateAsync(f)
+      if (brief !== null && brief !== (project.data?.options?.brief ?? '')) await saveBrief.mutateAsync(brief)
+      return api.analyze(pid, true)
+    },
     onSuccess: () => { invalidate(); nav(`/p/${pid}/${project.data?.mode === 'music' && !project.data.song_path ? 'music' : 'editor'}`) }, onError: (e: Error) => setErr(e.message),
   })
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) upload.mutate(files) }
@@ -99,8 +108,14 @@ export default function Footage() {
         {clips.data?.map(c => <ClipRow key={c.id} c={c} pid={pid} onRemove={() => remove.mutate(c.id)} />)}
         {clips.data?.length === 0 && <div className="muted text-sm">No clips yet.</div>}
         <div className="mt-auto flex flex-col gap-2">
-          <label className="label">Direct the editor first (optional)</label>
-          <textarea className="input text-sm" rows={6} value={brief ?? (project.data?.options?.brief ?? '')} onChange={e => setBrief(e.target.value)} onBlur={() => { if (brief !== null) saveBrief.mutate(brief) }}
+          <label className="label">This edit is about</label>
+          <div className="grid grid-cols-2 gap-2">
+            <input className="input" placeholder="the animal, e.g. iguana" value={subject ?? (project.data?.options?.focus?.subject ?? '')} onChange={e => setSubject(e.target.value)} onBlur={() => saveFocus.mutate(focusNow())} />
+            <input className="input" placeholder="what it does, e.g. escapes the snakes" value={action ?? (project.data?.options?.focus?.action ?? '')} onChange={e => setAction(e.target.value)} onBlur={() => saveFocus.mutate(focusNow())} />
+          </div>
+          <div className="text-xs muted">The subject's moments lead the edit, its key action lands on the drop, other animals only build tension. Works without the Director.</div>
+          <label className="label">More direction (optional)</label>
+          <textarea className="input text-sm" rows={5} value={brief ?? (project.data?.options?.brief ?? '')} onChange={e => setBrief(e.target.value)} onBlur={() => { if (brief !== null) saveBrief.mutate(brief) }}
             placeholder={'Your vision and the moments that matter, with timestamps in the clip:\n- the drop should hit when the iguana breaks free at 2:41\n- open on the snakes creeping at 0:35\n- title: THE IGUANA\n- dark, fast, no flashes'} />
           <div className="text-xs muted">The auto edit is built first, then the Director applies this brief and you keep directing it in the editor chat.</div>
           <StageProgress snap={snap} />

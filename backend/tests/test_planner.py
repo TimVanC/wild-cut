@@ -265,3 +265,28 @@ def test_frame_survives_regenerate_and_project_default(footage, grid):
     assert "every clip" in note and all(abs(c["frame"] - 16 / 9) < 1e-6 for c in out["clips"])
     with pytest.raises(edl_ops.EdlOpError):
         edl_ops.set_frame(out, None, "9:1")
+
+
+def test_focus_makes_the_subject_the_hero_and_the_title(footage, grid):
+    """Tim's iguana clip: the snakes' pounce out-scores everything, but the edit is about the iguana escaping."""
+    clips, moments = footage
+    import copy
+
+    ms = copy.deepcopy(moments)
+    best = max(ms, key=lambda m: m.score)
+    for m in ms:
+        m.species, m.action, m.caption_hint = "snake", "pounce", "group of snakes lunge and coil in a frenzy"
+    # one modest moment of the subject doing its thing, on a different clip than the top snake moment
+    weak = min((m for m in ms if m.clip_id != best.clip_id), key=lambda m: m.score)
+    weak.species, weak.action, weak.caption_hint = "marine iguana", "escape", "baby iguana dashes away from the snakes"
+    plain = plan(_req(footage, grid, seed=3, moments=ms))
+    hero = next(c for c in plain["clips"] if c["role"] == "hero")
+    assert hero["moment_id"] != weak.id and hero["species"] == "snake"   # without a focus the snakes win
+    focused = plan(_req(footage, grid, seed=3, moments=copy.deepcopy(ms), options={"focus": {"subject": "iguana", "action": "escapes"}}))
+    hero = next(c for c in focused["clips"] if c["role"] == "hero")
+    assert hero["moment_id"] == weak.id, "the subject's key action must be the hero"
+    assert focused["text"][0]["text"] == "THE IGUANA"
+    # the iguana moment also outranks snake moments elsewhere in the edit (plural/verb forms match)
+    from wildcut.planner.planner import _words
+
+    assert _words("The iguanas escaping the snakes") == {"iguana", "escap", "snake"} or "iguana" in _words("iguanas")

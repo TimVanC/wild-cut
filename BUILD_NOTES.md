@@ -174,6 +174,15 @@ filters / classification / two distinct edits.
   clip analysis before the song (Tim waited 8 minutes on "Analyzing beats"); `only_song` now runs
   just the beat analysis. A worker replaced during a deploy left its job "running" forever;
   the worker re-queues running jobs at startup and any job silent for 15 minutes.
+- "This edit is about" (Tim's iguana clip came out as a snake edit, and telling the Director it was
+  about the iguana only changed the title): a project `options.focus = {subject, action}` that the
+  planner itself honors, no Claude needed. Moments showing the subject (species, action or caption
+  words, crude stemming so "iguanas"/"escaping" match) get +0.6, +0.4 more for the key action,
+  moments without the subject -0.5; `choose_hero` takes the subject's key action when any moment
+  shows it, else any moment of the subject; the title is THE <SUBJECT>. Set on the New project
+  wizard and the Footage page (two fields), or by the Director's `set_focus(subject, action)`,
+  which re-plans everything unpinned; the system prompt tells it to use set_focus (never just the
+  title) when Tim says what the edit is about or that it is built around the wrong animal.
 - Brief before the first edit (Tim: "I want to direct the AI on my vision and timestamps before it
   creates the edit"): the Footage page has a "Direct the editor first" box saved as
   `options.brief`. The analyze job builds the auto edit as before, then, when Claude is on, hands
