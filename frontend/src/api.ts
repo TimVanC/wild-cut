@@ -66,6 +66,28 @@ export function abs(u: string | null | undefined): string {
   return out
 }
 
+export const isRemote = () => API_BASE !== ''
+
+/** Multipart upload with progress (fetch cannot report upload progress). */
+export function uploadFiles(url: string, files: File[], field = 'files', onProgress?: (pct: number) => void): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    files.forEach(f => fd.append(field, f))
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', API_BASE + url)
+    const tok = getToken()
+    if (tok) xhr.setRequestHeader('X-Wildcut-Token', tok)
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => {
+      if (xhr.status === 401) window.dispatchEvent(new CustomEvent('wc-auth-required'))
+      if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)) } catch { resolve({}) } }
+      else { let msg = xhr.statusText; try { const j = JSON.parse(xhr.responseText); msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail ?? j) } catch { /* ignore */ } reject(new ApiError(xhr.status, msg)) }
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'upload failed (network)'))
+    xhr.send(fd)
+  })
+}
+
 export function getToken(): string { try { return localStorage.getItem('wc_token') ?? '' } catch { return '' } }
 export function setToken(t: string) {
   try { localStorage.setItem('wc_token', t) } catch { /* ignore */ }
@@ -98,7 +120,7 @@ export const api = {
   deleteProject: (id: string) => req<{ ok: boolean }>('DELETE', `/api/projects/${id}`),
   clips: (id: string) => req<Clip[]>('GET', `/api/projects/${id}/clips`),
   addClipPath: (id: string, path: string) => req<Clip>('POST', `/api/projects/${id}/clips`, { path }),
-  uploadClips: (id: string, files: File[]) => { const fd = new FormData(); files.forEach(f => fd.append('files', f)); return req<{ clips: Clip[]; job: Job | null }>('POST', `/api/projects/${id}/clips/upload`, undefined, fd) },
+  uploadClips: (id: string, files: File[], onProgress?: (pct: number) => void) => uploadFiles(`/api/projects/${id}/clips/upload`, files, 'files', onProgress) as Promise<{ clips: Clip[]; job: Job | null }>,
   deleteClip: (id: string, clipId: string) => req<{ ok: boolean }>('DELETE', `/api/projects/${id}/clips/${clipId}`),
   library: (q?: string) => req<any[]>('GET', `/api/library${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   addFromLibrary: (id: string, libId: string) => req<Clip>('POST', `/api/projects/${id}/library/${libId}`),
@@ -107,7 +129,7 @@ export const api = {
   stockSearch: (q: string, orientation?: string, kind = 'video') => req<{ queries: string[]; results: StockResult[] }>('GET', `/api/stock/search?q=${encodeURIComponent(q)}${orientation ? `&orientation=${orientation}` : ''}&kind=${kind}`),
   stockImport: (project_id: string, results: StockResult[], then_plan = false) => req<{ job: Job }>('POST', '/api/stock/import', { project_id, results, then_plan }),
   setSong: (id: string, path: string) => req<{ project: Project; job: Job }>('POST', `/api/projects/${id}/song`, { path }),
-  uploadSong: (id: string, file: File) => { const fd = new FormData(); fd.append('file', file); return req<{ project: Project; job: Job }>('POST', `/api/projects/${id}/song/upload`, undefined, fd) },
+  uploadSong: (id: string, file: File, onProgress?: (pct: number) => void) => uploadFiles(`/api/projects/${id}/song/upload`, [file], 'file', onProgress) as Promise<{ project: Project; job: Job }>,
   clearSong: (id: string) => req<Project>('DELETE', `/api/projects/${id}/song`),
   beatgrid: (id: string) => req<BeatGrid>('GET', `/api/projects/${id}/beatgrid`),
   setWindow: (id: string, start: number, end: number, locked = true) => req<Project>('PUT', `/api/projects/${id}/song/window`, { start, end, locked }),

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { API_BASE, abs, api, fmtShort, getToken } from '../api'
+import { API_BASE, abs, api, fmtShort, getToken, isRemote, uploadFiles } from '../api'
 import { activeJob, useEvents } from '../hooks/useEvents'
 import FileBrowser from '../components/FileBrowser'
 
@@ -26,6 +26,8 @@ export default function Documentary() {
   const [filter, setFilter] = useState<string>('hero')
   const [browse, setBrowse] = useState(false)
   const [err, setErr] = useState('')
+  const [pct, setPct] = useState<number | null>(null)
+  const uploadFilm = useMutation({ mutationFn: (f: File) => uploadFiles(`/api/projects/${pid}/documentary/upload?animal=${encodeURIComponent(animal || 'auto')}&edits=${edits}`, [f], 'file', setPct), onSuccess: (d: any) => { setPct(null); setPath(d.path); inv() }, onError: (e: Error) => { setPct(null); setErr(e.message) } })
   useEffect(() => { if (opts.path && !path) setPath(opts.path); if (opts.animal && animal === 'auto') setAnimal(opts.animal); if (opts.edits) setEdits(opts.edits) }, [opts.path, opts.animal, opts.edits])  // eslint-disable-line react-hooks/exhaustive-deps
   const inv = () => { qc.invalidateQueries({ queryKey: ['documentary', pid] }); qc.invalidateQueries({ queryKey: ['project', pid] }) }
   const register = useMutation({ mutationFn: () => post(`/api/projects/${pid}/documentary/register`, { path: path || opts.path, animal: animal || 'auto', edits }), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
@@ -43,7 +45,10 @@ export default function Documentary() {
       <div className="card p-4 flex flex-col gap-3">
         <div className="flex items-center gap-3"><h2 className="font-medium">Documentary</h2>{d && <span className="muted text-xs truncate max-w-[560px]" title={d.path}>{d.path}</span>}{err && <span className="text-[#ff8a73] text-xs">{err}</span>}</div>
         <div className="grid grid-cols-[1fr_200px_240px_auto] gap-3 items-end">
-          <div><label className="label">Film (local path, or a file name inside inbox/)</label><div className="flex gap-2"><input className="input" value={path} onChange={e => setPath(e.target.value)} placeholder="/Users/tim/Movies/cheetahs.mkv" /><button className="btn" onClick={() => setBrowse(true)}>Browse…</button></div></div>
+          <div><label className="label">Film</label><div className="flex gap-2 items-center">
+            <label className="btn btn-primary cursor-pointer whitespace-nowrap">{uploadFilm.isPending ? `Uploading… ${pct ?? 0}%` : 'Upload film'}<input type="file" accept="video/*,.mkv,.mp4,.mov" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFilm.mutate(f); e.target.value = '' }} /></label>
+            {!isRemote() ? <><input className="input" value={path} onChange={e => setPath(e.target.value)} placeholder="or a local path / a file in inbox/" /><button className="btn" onClick={() => setBrowse(true)}>Browse…</button></> : <span className="muted text-xs truncate">{path ? path.split(/[\\/]/).pop() : 'no film yet'}</span>}
+          </div>{uploadFilm.isPending && <div className="h-1.5 rounded bg-[#23232b] overflow-hidden mt-2"><div className="h-full" style={{ width: `${pct ?? 0}%`, background: 'var(--accent)' }} /></div>}</div>
           <div><label className="label">Animal</label><input className="input" value={animal} onChange={e => setAnimal(e.target.value)} placeholder="auto-detect" /></div>
           <div><label className="label">Edits</label><select className="input" value={edits} onChange={e => setEdits(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="as_many">as many as the footage supports</option></select></div>
           <div className="flex gap-2">

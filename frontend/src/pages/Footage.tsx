@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { abs, api, fileUrl, type Clip, type StockResult } from '../api'
+import { abs, api, fileUrl, isRemote, type Clip, type StockResult } from '../api'
 import FileBrowser from '../components/FileBrowser'
 
 export default function Footage() {
@@ -19,10 +19,11 @@ export default function Footage() {
   const [orientation, setOrientation] = useState('')
   const [picked, setPicked] = useState<Record<string, StockResult>>({})
   const [err, setErr] = useState('')
+  const [pct, setPct] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['clips', pid] }); qc.invalidateQueries({ queryKey: ['project', pid] }) }
   const addPath = useMutation({ mutationFn: (p: string) => api.addClipPath(pid, p), onSuccess: invalidate, onError: (e: Error) => setErr(e.message) })
-  const upload = useMutation({ mutationFn: (files: File[]) => api.uploadClips(pid, files), onSuccess: invalidate, onError: (e: Error) => setErr(e.message) })
+  const upload = useMutation({ mutationFn: (files: File[]) => api.uploadClips(pid, files, setPct), onSuccess: () => { setPct(null); invalidate() }, onError: (e: Error) => { setPct(null); setErr(e.message) } })
   const remove = useMutation({ mutationFn: (cid: string) => api.deleteClip(pid, cid), onSuccess: invalidate })
   const addLib = useMutation({ mutationFn: (lid: string) => api.addFromLibrary(pid, lid), onSuccess: invalidate })
   const search = useMutation({ mutationFn: () => api.stockSearch(q, orientation || undefined), onError: (e: Error) => setErr(e.message) })
@@ -41,14 +42,17 @@ export default function Footage() {
         {tab === 'local' && (
           <div className="flex flex-col gap-4">
             <div onDragOver={e => e.preventDefault()} onDrop={onDrop} className="card p-8 text-center border-dashed cursor-pointer" onClick={() => fileInput.current?.click()}>
-              <div className="font-medium">Drop video files here</div>
-              <div className="text-xs muted mt-1">MP4 / MOV / MKV. Uploads copy into the project; large files are better added by path.</div>
+              <button className="btn btn-primary text-base px-5 py-2" disabled={upload.isPending} onClick={e => { e.stopPropagation(); fileInput.current?.click() }}>{upload.isPending ? `Uploading… ${pct ?? 0}%` : 'Upload video files'}</button>
+              <div className="text-xs muted mt-3">Opens your file explorer. You can also drop MP4 / MOV / MKV files (or photos) anywhere on this box.</div>
+              {upload.isPending && <div className="h-2 rounded bg-[#23232b] overflow-hidden mt-3 max-w-md mx-auto"><div className="h-full" style={{ width: `${pct ?? 0}%`, background: 'var(--accent)' }} /></div>}
               <input ref={fileInput} type="file" multiple accept="video/*,image/*" className="hidden" onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) upload.mutate(f); e.target.value = '' }} />
             </div>
-            <div className="flex gap-2 items-end">
-              <PathAdder onAdd={p => addPath.mutate(p)} onBrowse={() => setBrowse(true)} />
-            </div>
-            <div className="text-xs muted">Or drop files into <code>{cfg.data?.inbox_dir}</code>: they appear in the Library. Files dropped into <code>{cfg.data?.inbox_dir}/{pid}/</code> import straight into this project.</div>
+            {!isRemote() && <>
+              <div className="flex gap-2 items-end">
+                <PathAdder onAdd={p => addPath.mutate(p)} onBrowse={() => setBrowse(true)} />
+              </div>
+              <div className="text-xs muted">Or drop files into <code>{cfg.data?.inbox_dir}</code>: they appear in the Library. Files dropped into <code>{cfg.data?.inbox_dir}/{pid}/</code> import straight into this project.</div>
+            </>}
           </div>
         )}
         {tab === 'stock' && (

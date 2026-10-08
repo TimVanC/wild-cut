@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import WaveSurfer from 'wavesurfer.js'
-import { abs, api, fmtShort, type BeatGrid } from '../api'
+import { abs, api, fmtShort, isRemote, type BeatGrid } from '../api'
 import FileBrowser from '../components/FileBrowser'
 
 export default function Music() {
@@ -14,9 +14,10 @@ export default function Music() {
   const [path, setPath] = useState('')
   const [browse, setBrowse] = useState(false)
   const [err, setErr] = useState('')
+  const [pct, setPct] = useState<number | null>(null)
   const inv = () => { qc.invalidateQueries({ queryKey: ['project', pid] }); qc.invalidateQueries({ queryKey: ['beatgrid', pid] }) }
   const setSong = useMutation({ mutationFn: (p: string) => api.setSong(pid, p), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
-  const upload = useMutation({ mutationFn: (f: File) => api.uploadSong(pid, f), onSuccess: inv, onError: (e: Error) => setErr(e.message) })
+  const upload = useMutation({ mutationFn: (f: File) => api.uploadSong(pid, f, setPct), onSuccess: () => { setPct(null); inv() }, onError: (e: Error) => { setPct(null); setErr(e.message) } })
   const clear = useMutation({ mutationFn: () => api.clearSong(pid), onSuccess: inv })
   const patch = useMutation({ mutationFn: (b: any) => api.patchProject(pid, b), onSuccess: inv })
   const setWindow = useMutation({ mutationFn: (w: { start: number; end: number; locked: boolean }) => api.setWindow(pid, w.start, w.end, w.locked), onSuccess: () => { inv(); qc.invalidateQueries({ queryKey: ['edl', pid] }) } })
@@ -33,10 +34,12 @@ export default function Music() {
           {err && <span className="text-[#ff8a73] text-xs">{err}</span>}
         </div>
         <div className="flex gap-2 items-end">
-          <div className="flex-1"><label className="label">Local audio file (MP3 / WAV / M4A)</label><input className="input" placeholder="/Users/tim/Music/phonk_track.mp3" value={path} onChange={e => setPath(e.target.value)} onKeyDown={e => e.key === 'Enter' && path && setSong.mutate(path)} /></div>
-          <button className="btn" onClick={() => setBrowse(true)}>Browse…</button>
-          <button className="btn btn-primary" disabled={!path} onClick={() => setSong.mutate(path)}>Use song</button>
-          <label className="btn cursor-pointer">Upload<input type="file" accept="audio/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = '' }} /></label>
+          <label className="btn btn-primary cursor-pointer">{upload.isPending ? `Uploading… ${pct ?? 0}%` : 'Upload song (MP3 / WAV / M4A)'}<input type="file" accept="audio/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = '' }} /></label>
+          {!isRemote() && <>
+            <div className="flex-1"><label className="label">or a local path</label><input className="input" placeholder="/Users/tim/Music/phonk_track.mp3" value={path} onChange={e => setPath(e.target.value)} onKeyDown={e => e.key === 'Enter' && path && setSong.mutate(path)} /></div>
+            <button className="btn" onClick={() => setBrowse(true)}>Browse…</button>
+            <button className="btn" disabled={!path} onClick={() => setSong.mutate(path)}>Use path</button>
+          </>}
         </div>
         <div className="flex gap-4 items-center text-sm">
           <label className="flex items-center gap-2"><span className="muted">Export audio</span>

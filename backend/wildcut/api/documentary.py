@@ -1,7 +1,9 @@
 """Documentary mode endpoints: register, analyze, shot bank, star/ban, estimate, generate edits."""
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException
+from pathlib import Path
+
+from fastapi import Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -11,6 +13,7 @@ from wildcut.documentary.bank import estimate_edits
 from wildcut.documentary.service import bank_view, flags, get_documentary, load_bank, register, used_indexes
 from wildcut.media import MediaError
 from wildcut.services.jobs import enqueue
+from wildcut.services.projects import project_dir
 
 
 class RegisterIn(BaseModel):
@@ -34,6 +37,23 @@ def doc_register(project_id: str, body: RegisterIn, s: Session = Depends(get_ses
     try:
         doc = register(s, p, body.path, body.animal, body.edits)
     except MediaError as e:
+        raise HTTPException(400, str(e)) from e
+    return doc.model_dump()
+
+
+@app.post("/api/projects/{project_id}/documentary/upload")
+async def doc_upload(project_id: str, file: UploadFile = File(...), animal: str = "auto", edits: str = "as_many",
+                     s: Session = Depends(get_session)) -> dict:
+    """Upload the film from the browser (streamed to disk in 4 MB chunks) and register it."""
+    p = _project(s, project_id)
+    dst = project_dir(p.id) / "uploads" / Path(file.filename or "documentary.mp4").name
+    with dst.open("wb") as out:
+        while chunk := await file.read(4 << 20):
+            out.write(chunk)
+    try:
+        doc = register(s, p, str(dst), animal, edits)
+    except MediaError as e:
+        dst.unlink(missing_ok=True)
         raise HTTPException(400, str(e)) from e
     return doc.model_dump()
 

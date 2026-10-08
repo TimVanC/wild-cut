@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, type Clip } from '../api'
+import { api, isRemote, type Clip } from '../api'
 import { activeJob, useEvents } from '../hooks/useEvents'
 import FileBrowser from '../components/FileBrowser'
 
@@ -75,8 +75,8 @@ export default function Showdown() {
           <label><span className="label">Winner action clip (optional, 3 to 6 s after the reveal)</span><select className="input" value={winner} onChange={e => setWinner(e.target.value)}><option value="">none</option>{clips.data?.map(c => <option key={c.id} value={c.id}>{c.label} · {c.description || c.path.split(/[\\/]/).pop()}</option>)}</select></label>
           <div className="text-xs muted">Media per animal: add photos or short clips below (local files, uploads, or stock search on the Footage tab), then pick one per row.</div>
           <div className="flex gap-2">
-            <button className="btn btn-sm" onClick={() => setBrowse(true)}>Add local file…</button>
-            <label className="btn btn-sm cursor-pointer">Upload<input type="file" multiple accept="video/*,image/*" className="hidden" onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) upload.mutate(f); e.target.value = '' }} /></label>
+            <label className="btn btn-sm btn-primary cursor-pointer">Upload photos / clips<input type="file" multiple accept="video/*,image/*" className="hidden" onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) upload.mutate(f); e.target.value = '' }} /></label>
+            {!isRemote() && <button className="btn btn-sm" onClick={() => setBrowse(true)}>Add local file…</button>}
             <button className="btn btn-sm" onClick={() => nav(`/p/${pid}/footage`)}>Stock search</button>
           </div>
         </div>
