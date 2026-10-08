@@ -27,6 +27,9 @@ export default function Documentary() {
   const [browse, setBrowse] = useState(false)
   const [err, setErr] = useState('')
   const [pct, setPct] = useState<number | null>(null)
+  const [songPct, setSongPct] = useState<number | null>(null)
+  const uploadSong = useMutation({ mutationFn: (f: File) => api.uploadSong(pid, f, setSongPct), onSuccess: () => { setSongPct(null); qc.invalidateQueries({ queryKey: ['project', pid] }) }, onError: (e: Error) => { setSongPct(null); setErr(e.message) } })
+  const toVisual = useMutation({ mutationFn: () => api.clearSong(pid), onSuccess: () => qc.invalidateQueries({ queryKey: ['project', pid] }) })
   const uploadFilm = useMutation({ mutationFn: (f: File) => uploadFiles(`/api/projects/${pid}/documentary/upload?animal=${encodeURIComponent(animal || 'auto')}&edits=${edits}`, [f], 'file', setPct), onSuccess: (d: any) => { setPct(null); setPath(d.path); inv() }, onError: (e: Error) => { setPct(null); setErr(e.message) } })
   useEffect(() => { if (opts.path && !path) setPath(opts.path); if (opts.animal && animal === 'auto') setAnimal(opts.animal); if (opts.edits) setEdits(opts.edits) }, [opts.path, opts.animal, opts.edits])  // eslint-disable-line react-hooks/exhaustive-deps
   const inv = () => { qc.invalidateQueries({ queryKey: ['documentary', pid] }); qc.invalidateQueries({ queryKey: ['project', pid] }) }
@@ -57,7 +60,13 @@ export default function Documentary() {
           </div>
         </div>
         {job && <div><div className="h-2 rounded bg-[#23232b] overflow-hidden"><div className="h-full" style={{ width: `${Math.round(job.progress * 100)}%`, background: 'var(--accent)' }} /></div><div className="muted text-xs mt-1">{job.kind}: {Math.round(job.progress * 100)}% {job.message}</div></div>}
-        {project.data?.mode === 'music' && !project.data.song_path && <div className="text-xs" style={{ color: 'var(--accent)' }}>Music-synced: add your phonk track on the Music tab before generating (or switch the project to visual peaks).</div>}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="label mb-0">Song</span>
+          <label className="btn cursor-pointer">{uploadSong.isPending ? `Uploading… ${songPct ?? 0}%` : (project.data?.song_path ? 'Replace song' : 'Upload song (MP3 / WAV / M4A)')}<input type="file" accept="audio/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadSong.mutate(f); e.target.value = '' }} /></label>
+          {project.data?.song_path ? <span className="text-sm">{project.data.song_path.split(/[\\/]/).pop()} <span className="muted">· music-synced: cuts land on the beat and the hero on the drop</span></span>
+            : project.data?.mode === 'music' ? <span className="text-xs" style={{ color: 'var(--accent)' }}>Music-synced project without a song yet: upload your phonk track, or <button className="underline" onClick={() => toVisual.mutate()}>switch to visual peaks</button> (no music).</span>
+            : <span className="muted text-xs">visual-peaks mode (no music); uploading a song switches to music-synced</span>}
+        </div>
         <div className="text-xs muted">Multi-GB files are read in place by the worker; a 540p proxy and all analysis are cached per film, so generating more edits later never reprocesses it. Never uses the documentary's audio.</div>
       </div>
       {bank?.ready && (

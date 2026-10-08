@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, isRemote } from '../api'
 
 export default function NewProject() {
   const nav = useNavigate()
@@ -22,7 +22,7 @@ export default function NewProject() {
     mutationFn: async () => {
       const preset = cfg.data?.presets.find(p => p.id === style)
       const options: Record<string, any> = { intensity }
-      if (isDoc) options.documentary = { path: docPath.trim(), animal: animal.trim() || 'auto', edits, target_min: 60, target_max: 70 }
+      if (isDoc) options.documentary = { path: docPath.trim() || undefined, animal: animal.trim() || 'auto', edits, target_min: 60, target_max: 70 }
       return api.createProject({ name: name.trim() || (isDoc ? 'Documentary edits' : 'Untitled'), style, aspect: aspect || preset?.default_aspect, target_length: isDoc ? '65' : length, mode, audio_export: audio, options } as any)
     },
     onSuccess: (p) => nav(`/p/${p.id}/${isDoc ? 'documentary' : style === 'showdown' ? 'showdown' : 'footage'}`),
@@ -35,7 +35,11 @@ export default function NewProject() {
       <div className="card p-5 flex flex-col gap-4">
         <div><label className="label">Name</label><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder={isDoc ? 'Cheetahs of the Serengeti' : 'The Gibbon'} autoFocus /></div>
         {isDoc && (<>
-          <div><label className="label">Documentary file (local path or a file in inbox/)</label><input className="input" value={docPath} onChange={e => setDocPath(e.target.value)} placeholder="/Users/tim/Movies/cheetah_documentary.mkv" /><div className="text-xs muted mt-1">Multi-GB files are never uploaded through the browser; the worker reads them in place.</div></div>
+          {isRemote() ? (
+            <div className="card p-3 text-sm muted">Next screen: click <b style={{ color: 'var(--text)' }}>Upload film</b> to pick the documentary from your computer, and <b style={{ color: 'var(--text)' }}>Upload song</b> for your phonk track.</div>
+          ) : (
+            <div><label className="label">Documentary file (optional here: local path or a file in inbox/; you can also upload it on the next screen)</label><input className="input" value={docPath} onChange={e => setDocPath(e.target.value)} placeholder="/Users/tim/Movies/cheetah_documentary.mkv" /></div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">Animal</label><input className="input" value={animal} onChange={e => setAnimal(e.target.value)} placeholder="auto-detect" /></div>
             <div><label className="label">Number of edits</label><select className="input" value={edits} onChange={e => setEdits(e.target.value)}><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="as_many">as many as the footage supports</option></select></div>
@@ -64,7 +68,7 @@ export default function NewProject() {
         </div>
         <div className="flex gap-2 justify-end">
           <button className="btn" onClick={() => nav('/')}>Cancel</button>
-          <button className="btn btn-primary" disabled={create.isPending || (isDoc && !docPath.trim())} onClick={() => create.mutate()}>{isDoc ? 'Create and analyze later' : 'Create'}</button>
+          <button className="btn btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>{isDoc ? 'Create (upload the film next)' : 'Create'}</button>
         </div>
         {create.error && <div className="text-[#ff8a73] text-sm">{String((create.error as Error).message)}</div>}
       </div>
