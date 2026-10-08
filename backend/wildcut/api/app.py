@@ -913,10 +913,13 @@ _ACCESS_TOKEN = _os.environ.get("WILDCUT_ACCESS_TOKEN", "").strip()
 async def _access_token_guard(request: _Request, call_next):
     """When WILDCUT_ACCESS_TOKEN is set (public server), every /api call needs the token
     (header X-Wildcut-Token, ?token=, or the wc_token cookie the UI sets after you enter it)."""
-    if _ACCESS_TOKEN and request.url.path.startswith("/api") and request.url.path != "/api/health":
+    if (_ACCESS_TOKEN and request.method != "OPTIONS" and request.url.path.startswith("/api")
+            and request.url.path != "/api/health"):
         supplied = request.headers.get("x-wildcut-token") or request.query_params.get("token") or request.cookies.get("wc_token")
         if supplied != _ACCESS_TOKEN:
-            return JSONResponse({"detail": "access token required"}, status_code=401)
+            # this middleware sits outside CORSMiddleware, so add the CORS headers a cross-origin UI needs to read the 401
+            return JSONResponse({"detail": "access token required"}, status_code=401,
+                                headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"})
     return await call_next(request)
 
 
