@@ -841,6 +841,17 @@ def get_job(job_id: str, s: Session = Depends(get_session)) -> dict:
     return j.model_dump()
 
 
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job_route(job_id: str, s: Session = Depends(get_session)) -> dict:
+    """Cancel a queued job, or stop a running one at its next progress tick (seconds)."""
+    from wildcut.services.jobs import cancel_job
+
+    j = cancel_job(s, job_id)
+    if j is None:
+        raise HTTPException(404, "job not found")
+    return j.model_dump()
+
+
 @app.get("/api/projects/{project_id}/jobs")
 def project_jobs(project_id: str, s: Session = Depends(get_session)) -> list[dict]:
     rows = s.exec(select(Job).where(Job.project_id == project_id).order_by(Job.created_at.desc())).all()[:20]

@@ -342,3 +342,68 @@ def test_job_lanes_keep_the_song_off_the_video_queue(client):
         again = enqueue(s, "y", "analyze", {"force": False, "then_plan": True})
         s.refresh(build)
         assert build.status == "cancelled" and again.status == "queued"   # a real duplicate still collapses
+
+
+def test_cancel_stops_a_running_job_and_a_deleted_project_stops_its_job(client):
+    """Cancel marks a queued job cancelled; a running job stops at its next progress tick; deleting the
+    project stops its running job too (the worker used to grind on for the full clip)."""
+    from wildcut.db import Job, Project, get_engine
+    from wildcut.services import jobs as jobsmod
+    from wildcut.services.jobs import cancel_job, run_job
+
+    ticks = {"n": 0}
+
+    @handler_for_test("tick_test")
+    def _tick(s, job, progress):
+        for i in range(50):
+            ticks["n"] += 1
+            progress(i / 50, f"tick {i}")
+            if i == 2:
+                with Session(get_engine()) as other:
+                    cancel_job(other, job.id)       # Tim clicks Cancel while it runs
+        return {"finished": True}
+
+    @handler_for_test("gone_test")
+    def _gone(s, job, progress):
+        for i in range(50):
+            progress(i / 50, f"tick {i}")
+            if i == 2:
+                with Session(get_engine()) as other:
+                    p = other.get(Project, job.project_id)
+                    other.delete(p)
+                    other.commit()                   # Tim deletes the project while it runs
+        return {"finished": True}
+
+    try:
+        pid = client.post("/api/projects", json={"name": "cancel me", "style": "phonk"}).json()["id"]
+        with Session(get_engine()) as s:
+            job = Job(project_id=pid, kind="tick_test", status="running")
+            s.add(job)
+            s.commit()
+            run_job(s, job)
+            s.refresh(job)
+            assert job.status == "cancelled" and ticks["n"] <= 4 and not job.result.get("finished")
+            # the cancel route on a queued job
+            queued = Job(project_id=pid, kind="tick_test")
+            s.add(queued)
+            s.commit()
+            r = client.post(f"/api/jobs/{queued.id}/cancel")
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body.get("status") == "cancelled", (r.status_code, str(body)[:300])
+            # a deleted project stops its running job
+            pid2 = client.post("/api/projects", json={"name": "delete me", "style": "phonk"}).json()["id"]
+            job2 = Job(project_id=pid2, kind="gone_test", status="running")
+            s.add(job2)
+            s.commit()
+            run_job(s, job2)
+            assert s.get(Job, job2.id) is None or s.get(Job, job2.id).status != "done"
+    finally:
+        jobsmod.HANDLERS.pop("tick_test", None)
+        jobsmod.HANDLERS.pop("gone_test", None)
+
+
+def handler_for_test(kind):
+    from wildcut.services.jobs import handler
+
+    return handler(kind)

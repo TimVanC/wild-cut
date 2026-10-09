@@ -101,12 +101,37 @@ def claim_next(s: Session, lane: str | None = None) -> Job | None:
     return job
 
 
+class JobCancelled(Exception):
+    """Raised inside a handler (from its progress callback) when the job was cancelled or its project deleted."""
+
+
+def cancel_job(s: Session, job_id: str) -> Job | None:
+    """Cancel a queued job now, or ask a running one to stop at its next progress tick."""
+    job = s.get(Job, job_id)
+    if job is None or job.status not in ("queued", "running"):
+        return job
+    job.status = "cancelled"
+    job.message = "cancelled"
+    job.updated_at = now()
+    s.add(job)
+    s.commit()
+    s.refresh(job)          # expired after commit: model_dump() would be empty
+    return job
+
+
 def run_job(s: Session, job: Job) -> None:
     fn = HANDLERS.get(job.kind)
     jid, jkind = job.id, job.kind          # plain values: the ORM object is unusable after a failed flush
-    project = s.get(Project, job.project_id) if job.project_id else None
+    pid = job.project_id
+    project = s.get(Project, pid) if pid else None
 
     def progress(p: float, msg: str = "", stages: dict | None = None) -> None:
+        # the worker's only chance to notice a Cancel click or a deleted project is here, between steps
+        status = s.exec(select(Job.status).where(Job.id == jid)).first()
+        if status == "cancelled" or status is None:
+            raise JobCancelled("cancelled" if status else "job deleted")
+        if pid and s.exec(select(Project.id).where(Project.id == pid)).first() is None:
+            raise JobCancelled("project deleted")
         job.progress = round(float(p), 4)
         job.message = msg or job.message
         if stages is not None:
@@ -141,6 +166,17 @@ def run_job(s: Session, job: Job) -> None:
             project.message = ""
             s.add(project)
         s.commit()
+    except JobCancelled as e:
+        s.rollback()
+        log.info("job %s %s stopped: %s", jid, jkind, e)
+        job = s.get(Job, jid)
+        if job is not None:
+            job.status = "cancelled"
+            job.message = f"stopped: {e}"
+            job.updated_at = now()
+            s.add(job)
+            s.commit()
+        return
     except Exception as e:  # noqa: BLE001
         tb = traceback.format_exc()
         s.rollback()                        # first: after a failed flush the session refuses every attribute load

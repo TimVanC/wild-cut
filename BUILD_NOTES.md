@@ -196,6 +196,13 @@ filters / classification / two distinct edits.
   `claim_next(lane=...)` picks by `job_lane`. Local `make dev` still runs one worker for all.
   The motion step also reports progress every 2 s of media ("Clip 1: motion 45%") and runs at
   12 fps instead of 20 on clips longer than 90 s; the queued message names the job it waits for.
+- Cancel (Tim deleted a project whose 30-minute Canva export was being analyzed, and the worker
+  kept grinding on it for the deleted project, blocking the heavy lane): the job progress
+  callback now checks the job's status and the project's existence on every tick and raises
+  `JobCancelled`, which marks the job cancelled instead of error. `POST /api/jobs/{id}/cancel`
+  and a "cancel" button on the progress card; a running job stops within seconds (the longest
+  silent stretch is one 2 s motion tick or one Claude batch). Also: `enqueue` no longer lets a
+  song-only analyze cancel a queued "analyze and build" of the same kind.
 - Budget: Tim's third Director turn ("it needs to be completely redone") ran 16 tool calls with
   frame look-ups and cost about $1.20, which exhausted the $1.50 per-project budget mid-turn and
   then silently downgraded the next analysis to heuristics (no species tags, so the focus had

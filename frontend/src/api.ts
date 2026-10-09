@@ -155,6 +155,7 @@ export const api = {
   chat: (id: string) => req<ChatMsg[]>('GET', `/api/projects/${id}/chat`),
   sendChat: (id: string, message: string) => req<{ job: Job }>('POST', `/api/projects/${id}/chat`, { message }),
   jobs: (id: string) => req<Job[]>('GET', `/api/projects/${id}/jobs`),
+  cancelJob: (jobId: string) => req<Job>('POST', `/api/jobs/${jobId}/cancel`),
   job: (jobId: string) => req<Job>('GET', `/api/jobs/${jobId}`),
 }
 
