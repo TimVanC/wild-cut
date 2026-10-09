@@ -39,7 +39,13 @@ def new_item_id(prefix: str) -> str:
 
 
 def output_size(aspect: str, width: int) -> tuple[int, int]:
+    """Canvas size for a render width. For landscape aspects `width` is the short side, so a "full" 1080
+    render of 16:9 is 1920x1080 (Tim's landscape export), not 1080x608."""
     ratio = ASPECT_RATIOS.get(aspect, 9 / 16)
+    if ratio > 1.0:
+        h = width
+        w = int(round(h * ratio / 2)) * 2
+        return w, h
     h = int(round(width / ratio / 2)) * 2
     return width, h
 
@@ -55,8 +61,35 @@ def empty_edl(project_id: str, style: str, aspect: str, mode: str, seed: int = 1
     }
 
 
+def hold_seconds(c: dict) -> float:
+    """A clip may freeze one source frame: hold = {"at": source_s, "seconds": n} (the still Tim wanted at 35 s)."""
+    h = c.get("hold") or {}
+    try:
+        at, sec = float(h.get("at", -1)), float(h.get("seconds", 0))
+    except (TypeError, ValueError):
+        return 0.0
+    if sec <= 0 or not (c["in"] - 1e-6 <= at <= c["out"] + 1e-6):
+        return 0.0
+    return sec
+
+
 def clip_tl_duration(c: dict) -> float:
-    return timeline_duration(c["in"], c["out"], c.get("speed"))
+    return timeline_duration(c["in"], c["out"], c.get("speed")) + hold_seconds(c)
+
+
+def source_time_at(c: dict, elapsed: float) -> tuple[float, bool]:
+    """Source time for `elapsed` timeline seconds into a clip, honoring its hold. Returns (source_s, frozen)."""
+    from wildcut.planner.speed import source_at, timeline_between
+
+    sec = hold_seconds(c)
+    if sec > 0:
+        at = float(c["hold"]["at"])
+        hold_start = timeline_between(c.get("speed"), c["in"], at)
+        if elapsed >= hold_start:
+            if elapsed < hold_start + sec:
+                return at, True
+            elapsed -= sec
+    return source_at(c.get("speed"), c["in"], c["out"], elapsed), False
 
 
 def relayout(edl: dict) -> dict:
@@ -110,7 +143,11 @@ def peak_timeline(c: dict) -> float | None:
         return None
     from wildcut.planner.speed import timeline_between
 
-    return round(c["start"] + timeline_between(c.get("speed"), c["in"], c["peak"]), 4)
+    t = c["start"] + timeline_between(c.get("speed"), c["in"], c["peak"])
+    sec = hold_seconds(c)
+    if sec > 0 and float(c["hold"]["at"]) < c["peak"]:
+        t += sec            # the freeze happens before the peak, so the peak lands later on the timeline
+    return round(t, 4)
 
 
 def find_clip(edl: dict, item_id: str) -> dict | None:

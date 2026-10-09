@@ -196,6 +196,17 @@ filters / classification / two distinct edits.
   `claim_next(lane=...)` picks by `job_lane`. Local `make dev` still runs one worker for all.
   The motion step also reports progress every 2 s of media ("Clip 1: motion 45%") and runs at
   12 fps instead of 20 on clips longer than 90 s; the queued message names the job it waits for.
+- From Tim's hand-cut reference (54 s, clips playing out, a 5 s still of the iguana at 35 s,
+  snakes slither away, pull back on the mountains): four additions. `hold` on a clip
+  ({at, seconds}) freezes one frame; `clip_tl_duration` and `peak_timeline` include it, the
+  renderer maps timeline time around it (`source_time_at`), it survives re-plans on pinned clips
+  (Inspector "freeze frame 4s", Director `set_hold`). `options.pace` hard/medium/slow multiplies
+  the preset's cut lengths in beats (x1/x2/x4; the hero still lands on the drop; Director
+  `set_pace`). `push_out` effect (start tight, settle wide). `options.look` light/normal/heavy
+  scales the preset grade (LUT strength, lift, contrast, gamma, saturation, vignette; Tim: the
+  filters were "really dark"), Director `set_look`. 16:9 output renders 1920x1080 (the render
+  width is the short side for landscape), combined with `frame` 1.2 it gives Tim's "zoomed so
+  the sides go off screen" look inside a landscape export.
 - Cancel (Tim deleted a project whose 30-minute Canva export was being analyzed, and the worker
   kept grinding on it for the deleted project, blocking the heavy lane): the job progress
   callback now checks the job's status and the project's existence on every tick and raises

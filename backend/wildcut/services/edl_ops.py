@@ -196,6 +196,8 @@ def effect_params(etype: str, intensity: str, preset: dict, fps: int) -> tuple[d
         return {"scale": pick(cfg.get("scale", 1.08), intensity)}, cfg.get("ease_ms", 200) / 1000.0
     if etype == "push_in":
         return {"scale": pick(cfg.get("scale", 1.06), intensity)}, None
+    if etype == "push_out":
+        return {"scale": pick(cfg.get("scale", {"low": 1.08, "med": 1.12, "high": 1.18}), intensity)}, None
     if etype == "glitch":
         frames = pick(cfg.get("frames", 2), intensity) or 2
         return {"frames": frames}, frames / fps
@@ -290,6 +292,51 @@ def set_frame(edl: dict, item_id: str | None, frame: Any) -> str:
     c = _clip(edl, item_id)
     c["frame"] = fa
     return f"framed {c.get('label', c['id'])} {label}"
+
+
+LOOKS = {"light": 0.5, "normal": 1.0, "heavy": 1.3}
+
+
+def apply_look(grade: dict, overlays: dict, look: str) -> tuple[dict, dict]:
+    """Scale a preset's grade toward or away from the untouched picture. 'light' halves the LUT, lift,
+    contrast and vignette (Tim: "darken it but not too dark"); 'heavy' pushes them a little further."""
+    k = LOOKS.get(look or "normal", 1.0)
+    g, o = dict(grade), dict(overlays)
+    g["lut_strength"] = round(min(1.0, float(g.get("lut_strength", 1.0)) * k), 3)
+    g["lift"] = round(float(g.get("lift", 0.0)) * k, 4)
+    g["contrast"] = round(1.0 + (float(g.get("contrast", 1.0)) - 1.0) * k, 4)
+    g["gamma"] = round(1.0 + (float(g.get("gamma", 1.0)) - 1.0) * k, 4)
+    g["saturation"] = round(1.0 + (float(g.get("saturation", 1.0)) - 1.0) * k, 4)
+    o["vignette"] = round(float(o.get("vignette", 0.0)) * k, 3)
+    g["look"] = look or "normal"
+    return g, o
+
+
+def set_look(edl: dict, look: str) -> str:
+    if look not in LOOKS:
+        raise EdlOpError("look must be light, normal or heavy")
+    preset = load_preset(edl["style"])
+    edl["grade"], edl["overlays"] = apply_look(dict(preset.get("grade", {})), dict(preset.get("overlays", {})), look)
+    return f"look {look}"
+
+
+def set_hold(edl: dict, item_id: str, at: float | None, seconds: float) -> str:
+    """Freeze the frame at source time `at` for `seconds` (0 removes the hold). Pins the clip's range."""
+    c = _clip(edl, item_id)
+    seconds = float(seconds or 0)
+    if seconds <= 0 or at is None:
+        c.pop("hold", None)
+        edlmod.relayout(edl)
+        return f"removed the freeze on {c.get('label', c['id'])}"
+    at = float(at)
+    if not (c["in"] - 1e-6 <= at <= c["out"] + 1e-6):
+        raise EdlOpError(f"{at:.2f}s is outside the clip's range {c['in']:.2f}-{c['out']:.2f}s")
+    if seconds > 20:
+        raise EdlOpError("a freeze longer than 20 s is probably a mistake")
+    c["hold"] = {"at": round(at, 4), "seconds": round(seconds, 3)}
+    c["locked_range"] = True
+    edlmod.relayout(edl)
+    return f"froze {c.get('label', c['id'])} at {at:.2f}s for {seconds:g}s"
 
 
 def set_lock(edl: dict, item_id: str, locked: bool) -> str:

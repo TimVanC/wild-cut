@@ -31,6 +31,7 @@ from wildcut.planner.speed import (
 
 MIN_SLOT = 0.25
 UNKNOWN_SPECIES = {"", "animal", "none", "unknown", "auto", "any"}
+PACE_MULT = {"hard": 1.0, "medium": 2.0, "slow": 4.0}
 STOP_WORDS = {"the", "a", "an", "of", "and", "its", "it", "is", "to", "from", "by", "with", "on", "in"}
 
 
@@ -122,6 +123,11 @@ class Planner:
         self.edl["intensity"] = self.intensity
         self.edl["grade"] = dict(self.preset.get("grade", {}))
         self.edl["overlays"] = dict(self.preset.get("overlays", {}))
+        look = str(req.options.get("look") or "normal")
+        if look != "normal":
+            from wildcut.services.edl_ops import apply_look
+
+            self.edl["grade"], self.edl["overlays"] = apply_look(self.edl["grade"], self.edl["overlays"], look)
         self.edl["transitions"] = dict(self.preset.get("transitions", {}))
         self.edl["audio"]["export"] = req.audio_export
         self.edl["audio"]["song_path"] = req.song_path
@@ -345,9 +351,24 @@ class Planner:
         return self.edl
 
     # ------------------------------------------------------------------ music mode
+    def paced(self, pacing: dict) -> dict:
+        """Tim's pace: 'hard' = the preset as written (a cut per beat or two), 'medium' = twice as long,
+        'slow' = four times (clips play out; the hero still lands on the drop)."""
+        mult = PACE_MULT.get(str(self.req.options.get("pace") or "hard"), 1.0)
+        if mult == 1.0:
+            return pacing
+        out = dict(pacing)
+        for k in ("build_cut_beats_start", "build_cut_beats_end", "final_bar_cut_beats", "post_cut_beats", "post_cut_beats_min", "shot_bars"):
+            if k in out:
+                out[k] = out[k] * mult
+        for k in ("visual_lead", "visual_tail", "visual_hero_lead", "visual_hero_tail"):
+            if k in out:
+                out[k] = out[k] * min(mult, 2.0)
+        return out
+
     def plan_music(self) -> None:
         req, grid, preset = self.req, self.req.grid, self.preset
-        pacing = preset["pacing"]
+        pacing = self.paced(preset["pacing"])
         ramp = preset.get("speed_ramp", {})
         window = req.song_window
         if self.existing.get("audio", {}).get("window_locked") and self.existing["audio"].get("song_window"):
@@ -747,7 +768,7 @@ class Planner:
     # ------------------------------------------------------------------ visual mode
     def plan_visual(self) -> None:
         req, preset = self.req, self.preset
-        pacing = preset["pacing"]
+        pacing = self.paced(preset["pacing"])
         ramp = preset.get("speed_ramp", {})
         L = float(req.target_length or 30.0)
         lead, tail = pacing.get("visual_lead", 1.0), pacing.get("visual_tail", 0.35)
@@ -887,9 +908,11 @@ class Planner:
 
 
 def carry_frame(entry: dict, old: dict) -> None:
-    """A clip whose framing Tim set by hand keeps it across re-plans (the key is present even when None = fill)."""
+    """A clip whose framing / freeze Tim set by hand keeps it across re-plans (the key is present even when None)."""
     if "frame" in old:
         entry["frame"] = old["frame"]
+    if old.get("hold") and entry["in"] - 1e-6 <= float(old["hold"].get("at", -1)) <= entry["out"] + 1e-6:
+        entry["hold"] = dict(old["hold"])
 
 
 def plan(req: PlanRequest) -> dict:

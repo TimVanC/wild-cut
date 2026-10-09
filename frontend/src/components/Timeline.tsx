@@ -3,7 +3,7 @@ import type { BeatGrid, Edl, EdlClip, EdlEffect, EdlText } from '../api'
 
 export type Selection = { kind: 'clip'; id: string } | { kind: 'effect'; id: string } | { kind: 'text'; id: string } | null
 
-const FX_COLORS: Record<string, string> = { shake: '#ff5a3c', flash: '#ffffff', chromatic: '#7fd0ff', zoom_punch: '#f2b53a', glitch: '#c57bff', push_in: '#58c27d', fade_black: '#777', motion_blur: '#ffa54a' }
+const FX_COLORS: Record<string, string> = { shake: '#ff5a3c', flash: '#ffffff', chromatic: '#7fd0ff', zoom_punch: '#f2b53a', glitch: '#c57bff', push_in: '#58c27d', push_out: '#3fa0c2', fade_black: '#777', motion_blur: '#ffa54a' }
 
 export default function Timeline({ edl, grid, time, selection, onSelect, onSeek, onTrim, dirty }: {
   edl: Edl; grid: BeatGrid | null; time: number; selection: Selection; onSelect: (s: Selection) => void; onSeek: (t: number) => void

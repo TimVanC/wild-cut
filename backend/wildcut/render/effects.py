@@ -54,6 +54,9 @@ def geometry(effects: list[dict], t: float, frame: int, fps: int) -> GeomState:
         elif kind == "push_in":
             scale = float(params.get("scale", 1.06))
             g.zoom *= 1.0 + (scale - 1.0) * p              # slow push across the clip
+        elif kind == "push_out":
+            scale = float(params.get("scale", 1.12))
+            g.zoom *= scale - (scale - 1.0) * min(1.0, p)  # start tight, settle on the wide frame
     return g
 
 

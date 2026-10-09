@@ -413,6 +413,45 @@ def t_set_hero(ctx: Context, clip: Any, source_time: float, **_) -> dict:
     return {"ok": True, "note": note, "hero_item": hero["id"], "edit": summarize_edit(ctx)}
 
 
+def t_set_hold(ctx: Context, clip: Any, source_time: float | None = None, seconds: float = 4.0, **_) -> dict:
+    """Freeze a frame of a clip for N seconds (a still image moment); seconds 0 removes it."""
+    c = resolve_clip(ctx, clip)
+    item = edl_item_for_clip(ctx, c)
+    if item is None:
+        raise ToolError(f"{c.label} is not in the edit")
+    if source_time is not None and seconds and not (item["in"] <= float(source_time) <= item["out"]):
+        ensure_source_in_range(ctx, item, float(source_time))
+    note = edl_ops.set_hold(ctx.edl, item["id"], source_time, seconds)
+    ctx.commit(note)
+    return {"ok": True, "note": note, "edit": summarize_edit(ctx)}
+
+
+def t_set_look(ctx: Context, look: str, **_) -> dict:
+    """Grade strength: light (half the LUT, lift, contrast and vignette), normal, heavy. Sticks across re-plans."""
+    note = edl_ops.set_look(ctx.edl, look)
+    ctx.project.options = dict(ctx.project.options or {}, look=look)
+    ctx.s.add(ctx.project)
+    ctx.commit(note)
+    return {"ok": True, "note": note}
+
+
+def t_set_pace(ctx: Context, pace: str, **_) -> dict:
+    """How long cuts run: hard (cut on every beat or two), medium, slow (clips play out). Re-plans the unpinned parts."""
+    pace = (pace or "hard").strip().lower()
+    if pace not in ("hard", "medium", "slow"):
+        raise ToolError("pace must be hard, medium or slow")
+    opts = dict(ctx.project.options or {})
+    opts["pace"] = pace
+    ctx.project.options = opts
+    ctx.s.add(ctx.project)
+    ctx.s.commit()
+    row = plan_project(ctx.s, ctx.project, keep_locks=True, note=f"chat: pace {pace}")
+    ctx.edl = row.json
+    ctx.versions.append(row.version)
+    ctx.changed = True
+    return {"ok": True, "note": f"pace {pace}", "edit": summarize_edit(ctx)}
+
+
 def t_set_frame(ctx: Context, frame: Any, clip: Any = None, **_) -> dict:
     if clip in (None, "", "all"):
         note = edl_ops.set_frame(ctx.edl, None, frame)
@@ -516,6 +555,9 @@ TOOL_IMPLS = {
     "set_song_window": t_set_song_window, "plan_auto": t_plan_auto, "render_preview": t_render_preview, "undo": t_undo,
     "set_lock": t_set_lock,
     "set_frame": t_set_frame,
+    "set_hold": t_set_hold,
+    "set_pace": t_set_pace,
+    "set_look": t_set_look,
     "set_focus": t_set_focus,
     "set_hero": t_set_hero,
 }
@@ -533,13 +575,16 @@ TOOLS: list[dict] = [
     {"name": "remove_clip", "description": "Remove a clip from the edit.", "input_schema": {"type": "object", "properties": {"clip": _CLIP}, "required": ["clip"]}},
     {"name": "set_clip_range", "description": "Trim a clip's source range (seconds in the source file). Locks the range.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_start": {"type": "number"}, "source_end": {"type": "number"}}, "required": ["clip"]}},
     {"name": "set_title", "description": "Set the title text and/or when it appears. The only text in a single-animal edit is the animal's name, e.g. 'THE GIBBON'. Locks the title.", "input_schema": {"type": "object", "properties": {"text": {"type": "string"}, "time": _TIME, "duration": {"type": "number"}}}},
-    {"name": "add_effect", "description": "Add an effect at a time.", "input_schema": {"type": "object", "properties": {"type": {"type": "string", "enum": ["shake", "flash", "chromatic", "zoom_punch", "glitch", "fade_black", "push_in", "motion_blur"]}, "time": _TIME, "intensity": {"type": "string", "enum": ["low", "med", "high"]}}, "required": ["type", "time"]}},
+    {"name": "add_effect", "description": "Add an effect at a time.", "input_schema": {"type": "object", "properties": {"type": {"type": "string", "enum": ["shake", "flash", "chromatic", "zoom_punch", "glitch", "fade_black", "push_in", "push_out", "motion_blur"]}, "time": _TIME, "intensity": {"type": "string", "enum": ["low", "med", "high"]}}, "required": ["type", "time"]}},
     {"name": "remove_effect", "description": "Remove an effect by id, or the one of a type nearest a time, or all of a type.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "type": {"type": "string"}, "near_time": _TIME, "all_of_type": {"type": "boolean"}}}},
     {"name": "toggle_effect", "description": "Enable or disable one effect.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["effect_id", "enabled"]}},
     {"name": "set_intensity", "description": "Set effect intensity (low/med/high) for one effect or all effects.", "input_schema": {"type": "object", "properties": {"intensity": {"type": "string", "enum": ["low", "med", "high"]}, "effect_id": {"type": "string"}}, "required": ["intensity"]}},
     {"name": "set_speed_ramp", "description": "Put a slow-motion ramp on a clip around a source time (slow_rate 0.3-0.7), or remove it (slow_rate null/1).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "slow_rate": {"type": ["number", "null"]}, "source_time": {"type": "number"}}, "required": ["clip"]}},
     {"name": "set_focus", "description": "Declare what the edit is about and rebuild it around that: subject (the animal or thing, e.g. 'iguana') and optionally its key action (e.g. 'escape'). Moments showing the subject rank first, its key action becomes the hero on the drop, other animals only build tension, the title becomes THE <SUBJECT>. Use whenever Tim says what the edit is about or that it is built around the wrong animal; it replaces unpinned clips.", "input_schema": {"type": "object", "properties": {"subject": {"type": "string"}, "action": {"type": "string"}}, "required": ["subject"]}},
     {"name": "set_hero", "description": "Make the moment at a source time of a clip the hero: it is placed so its peak lands on the drop (or the visual payoff) with the slow-mo ramp, and it is pinned. Use for the moment Tim calls the biggest / the payoff / 'the drop should hit when...'. Creates the moment if analysis did not detect one there.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}}, "required": ["clip", "source_time"]}},
+    {"name": "set_hold", "description": "Freeze one frame of a clip and hold it as a still for N seconds (Tim: 'flash the iguana and hold that frame for 5 seconds'). seconds 0 removes the freeze. Add push_in at the same time for a slow zoom on the still.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}, "seconds": {"type": "number"}}, "required": ["clip", "source_time", "seconds"]}},
+    {"name": "set_look", "description": "How heavy the colour grade is: 'light' (half the darkening, lift, contrast and vignette; Tim: 'darken it but not too dark'), 'normal', or 'heavy'.", "input_schema": {"type": "object", "properties": {"look": {"type": "string", "enum": ["light", "normal", "heavy"]}}, "required": ["look"]}},
+    {"name": "set_pace", "description": "How long cuts run across the whole edit: 'hard' = a cut on every beat or two (phonk default), 'medium' = twice as long, 'slow' = clips play out (four times as long). Use when Tim says it is cut too much / let the clips breathe. Re-plans the unpinned parts; the hero still lands on the drop.", "input_schema": {"type": "object", "properties": {"pace": {"type": "string", "enum": ["hard", "medium", "slow"]}}, "required": ["pace"]}},
     {"name": "set_frame", "description": "How a clip sits in the vertical canvas. 'fill' crops it to fill the whole frame (default). An aspect such as '1.2:1', '4:3' or '16:9' shows the clip as a centered box of that shape at full width with black above and below, which suits wide shots that crop badly to 9:16. Omit clip (or 'all') to apply to every clip and make it the project default.", "input_schema": {"type": "object", "properties": {"frame": {"type": "string", "description": "'fill', '1.2:1', '1:1', '4:3', '16:9', or a w/h number as text"}, "clip": _CLIP}, "required": ["frame"]}},
     {"name": "set_style", "description": "Switch the style preset (phonk, cinematic, chase) and optionally the aspect; re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"style": {"type": "string"}, "aspect": {"type": "string", "enum": ["9:16", "1:1", "4:5", "3:4"]}}, "required": ["style"]}},
     {"name": "set_song_window", "description": "Choose which part of the song the edit uses (seconds in the song file); re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}, "required": ["start", "end"]}},

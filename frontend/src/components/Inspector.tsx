@@ -47,6 +47,7 @@ function ClipInspector({ pid, edl, id, onOp, onClose }: { pid: string; edl: Edl;
       <div className="flex flex-wrap gap-1.5">
         <button className="btn btn-sm" onClick={() => onOp('set_lock', { item_id: c.id, locked: !locked })}>{locked ? '📌 unpin' : 'pin'}</button>
         <button className="btn btn-sm" onClick={() => onOp('set_speed_ramp', { item_id: c.id, slow_rate: c.speed ? null : 0.4 })}>{c.speed ? 'remove ramp' : 'add slow-mo ramp'}</button>
+        <button className="btn btn-sm" title="Freeze one frame as a still (at the clip's peak, or its middle)" onClick={() => onOp('set_hold', c.hold ? { item_id: c.id, at: null, seconds: 0 } : { item_id: c.id, at: c.peak ?? (c.in + c.out) / 2, seconds: 4 })}>{c.hold ? `remove freeze (${c.hold.seconds}s)` : 'freeze frame 4s'}</button>
         {c.speed && <select className="input w-24" value={Math.min(...c.speed.map(k => k.rate))} onChange={e => onOp('set_speed_ramp', { item_id: c.id, slow_rate: Number(e.target.value) })}>{[0.3, 0.4, 0.5, 0.7].map(r => <option key={r} value={r}>{r}x</option>)}</select>}
         <button className="btn btn-sm" onClick={() => onOp('set_enabled', { item_id: c.id, enabled: !c.enabled })}>{c.enabled ? 'disable' : 'enable'}</button>
         <button className="btn btn-sm btn-danger" onClick={() => onOp('remove_clip', { item_id: c.id })}>remove</button>

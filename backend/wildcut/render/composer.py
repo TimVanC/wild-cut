@@ -142,9 +142,9 @@ class ClipRenderer:
 
     def frame(self, t: float, frame_idx: int, geom: fx.GeomState) -> np.ndarray:
         c = self.clip
-        s = source_at(self.speed, c["in"], c["out"], t - c["start"])
-        rate = _rate_at(self.speed, s) if self.speed else 1.0
-        src = self.source.frame_at(s, rate)
+        s, frozen = edlmod.source_time_at(c, t - c["start"])
+        rate = 0.0 if frozen else (_rate_at(self.speed, s) if self.speed else 1.0)
+        src = self.source.frame_at(s, rate if rate > 0 else 1.0)
         if self.src_crop:
             x, y, w, h = [int(v) for v in self.src_crop]
             src = src[y:y + h, x:x + w]

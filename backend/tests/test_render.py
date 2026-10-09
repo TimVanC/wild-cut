@@ -133,3 +133,25 @@ def test_frame_box_letterboxes_clip(phonk_edl):
         c["frame"] = None
     full = render_frame(edl, t, width=270)
     assert full[:8].mean() > 5 or full[-8:].mean() > 5
+
+
+def test_hold_renders_the_same_frame_and_push_out_settles_wide(phonk_edl):
+    import copy
+
+    from wildcut.render import effects as fx
+    from wildcut.services import edl_ops
+
+    edl = copy.deepcopy(phonk_edl)
+    edl["effects"] = []
+    edl["overlays"] = {}
+    c = edl["clips"][1]
+    at = (c["in"] + c["out"]) / 2
+    edl_ops.set_hold(edl, c["id"], at, 2.0)
+    start = c["start"] + (at - c["in"])          # no speed ramp on a build clip: timeline == source offset
+    a = render_frame(edl, start + 0.3, width=270)
+    b = render_frame(edl, start + 1.5, width=270)
+    assert np.abs(a.astype(int) - b.astype(int)).mean() < 1.0, "frames inside the freeze must be identical"
+    after = render_frame(edl, start + 2.4, width=270)
+    assert np.abs(a.astype(int) - after.astype(int)).mean() > 1.0, "after the freeze the clip moves on"
+    e = {"id": "e1", "type": "push_out", "t": 0.0, "duration": 2.0, "params": {"scale": 1.2}, "enabled": True}
+    assert abs(fx.geometry([e], 0.0, 0, 30).zoom - 1.2) < 1e-6 and abs(fx.geometry([e], 2.0, 60, 30).zoom - 1.0) < 1e-6

@@ -109,7 +109,7 @@ def health() -> dict:
 @app.get("/api/config")
 def config() -> dict:
     settings = get_settings()
-    return {"presets": list_presets(), "showdown_layouts": list_layouts(), "aspects": list(edlmod.ASPECT_RATIOS.keys())[:4],
+    return {"presets": list_presets(), "showdown_layouts": list_layouts(), "aspects": list(edlmod.ASPECT_RATIOS.keys()),
             "target_lengths": ["15", "30", "45", "60", "song"], "stock": stock_status(),
             "claude": {"enabled": settings.claude_enabled, "model": settings.claude_model,
                        "budget_per_project_usd": settings.claude_budget_per_project_usd,
@@ -599,6 +599,12 @@ def edl_op(project_id: str, body: EdlOp, s: Session = Depends(get_session)) -> d
             note = edl_ops.set_speed_ramp(edl, a["item_id"], a.get("slow_rate", 0.4), a.get("peak"))
         elif body.op == "set_lock":
             note = edl_ops.set_lock(edl, a["item_id"], bool(a.get("locked", True)))
+        elif body.op == "set_look":
+            note = edl_ops.set_look(edl, a.get("look", "normal"))
+            p.options = dict(p.options or {}, look=a.get("look", "normal"))
+            s.add(p)
+        elif body.op == "set_hold":
+            note = edl_ops.set_hold(edl, a["item_id"], a.get("at"), a.get("seconds", 0))
         elif body.op == "set_frame":
             note = edl_ops.set_frame(edl, a.get("item_id"), a.get("frame"))
             if a.get("item_id") is None:

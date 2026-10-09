@@ -21,7 +21,7 @@ export type EdlClip = {
   id: string; clip_id: string | null; moment_id: string | null; label: string; src: string; proxy: string; in: number; out: number
   start: number; tl_duration: number; speed: { t: number; rate: number }[] | null; role: string; locked_order: boolean
   locked_range: boolean; anchor: string | null; peak: number | null; enabled: boolean; species?: string; action?: string
-  caption_hint?: string; kind?: string; card?: any; frame?: number | null
+  caption_hint?: string; kind?: string; card?: any; frame?: number | null; hold?: { at: number; seconds: number } | null
 }
 export type EdlEffect = { id: string; type: string; t: number; duration: number; intensity: string; enabled: boolean; locked: boolean; params: Record<string, any> }
 export type EdlText = { id: string; text: string; t: number; duration: number; animation: string; locked: boolean; enabled: boolean; style: Record<string, any>; kind?: string }

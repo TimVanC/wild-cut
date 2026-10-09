@@ -294,3 +294,55 @@ def test_focus_makes_the_subject_the_hero_and_the_title(footage, grid):
 
     from wildcut.planner.planner import _overlap
     assert _overlap(_words("the iguanas escaping"), {"iguana"}) and _overlap({"escape"}, {"escapes"}) and not _overlap({"bird"}, {"lyrebird"})
+
+
+def test_hold_freezes_a_frame_and_pace_slows_the_cuts(footage, grid):
+    from wildcut.planner import edl as edlmod
+    from wildcut.services import edl_ops
+
+    e = plan(_req(footage, grid, seed=3))
+    hard_avg = e["duration"] / len(e["clips"])
+    c = e["clips"][1]
+    before = c["tl_duration"]
+    at = (c["in"] + c["out"]) / 2
+    note = edl_ops.set_hold(e, c["id"], at, 3.0)
+    assert "froze" in note and abs(c["tl_duration"] - (before + 3.0)) < 1e-3 and c["locked_range"]
+    assert abs(e["duration"] - sum(x["tl_duration"] for x in e["clips"])) < 1e-3
+    # inside the hold the source time stands still; afterwards it continues where it left off
+    hold_start = edlmod.source_time_at(c, 0.0)[0]
+    assert hold_start == c["in"]
+    s1, frozen1 = edlmod.source_time_at(c, before / 2 + 0.5)
+    s2, frozen2 = edlmod.source_time_at(c, before / 2 + 2.5)
+    assert frozen1 and frozen2 and abs(s1 - at) < 1e-6 and abs(s2 - at) < 1e-6
+    s3, frozen3 = edlmod.source_time_at(c, before + 3.0 - 0.01)
+    assert not frozen3 and s3 > at
+    # the hold survives a re-plan on the pinned clip, and is removed cleanly
+    out = plan(_req(footage, grid, seed=4, existing=e))
+    kept = next(x for x in out["clips"] if x["id"] == c["id"])
+    assert kept.get("hold") == c["hold"]
+    edl_ops.set_hold(e, c["id"], None, 0)
+    assert "hold" not in c and abs(c["tl_duration"] - before) < 1e-3
+    # pace: slow cuts are much longer on average, and the hero still lands on the drop
+    slow = plan(_req(footage, grid, seed=3, options={"pace": "slow"}))
+    assert slow["duration"] / len(slow["clips"]) > 1.8 * hard_avg, (hard_avg, slow["duration"] / len(slow["clips"]))
+    hero = next(x for x in slow["clips"] if x["role"] == "hero")
+    assert abs(edlmod.peak_timeline(hero) - slow["markers"]["drop"]) <= 1 / slow["fps"]
+    with pytest.raises(edl_ops.EdlOpError):
+        edl_ops.set_hold(e, c["id"], c["out"] + 5, 2.0)
+
+
+def test_landscape_output_and_light_look(footage, grid):
+    from wildcut.planner import edl as edlmod
+    from wildcut.services import edl_ops
+
+    assert edlmod.output_size("16:9", 1080) == (1920, 1080)
+    assert edlmod.output_size("16:9", 540) == (960, 540)
+    assert edlmod.output_size("9:16", 1080) == (1080, 1920)
+    e = plan(_req(footage, grid, seed=3, aspect="16:9", options={"look": "light", "frame": 1.2}))
+    assert e["aspect"] == "16:9" and all(c["frame"] == 1.2 for c in e["clips"])
+    assert e["grade"]["look"] == "light" and e["grade"]["lut_strength"] == 0.5 and abs(e["grade"]["lift"]) < 0.02
+    assert e["overlays"]["vignette"] < 0.2
+    normal = plan(_req(footage, grid, seed=3, aspect="16:9"))
+    assert normal["grade"]["lut_strength"] == 1.0
+    edl_ops.set_look(normal, "heavy")
+    assert normal["grade"]["look"] == "heavy" and normal["grade"]["contrast"] > 1.12

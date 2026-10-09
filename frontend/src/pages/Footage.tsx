@@ -114,6 +114,10 @@ export default function Footage() {
             <input className="input" placeholder="what it does, e.g. escapes the snakes" value={action ?? (project.data?.options?.focus?.action ?? '')} onChange={e => setAction(e.target.value)} onBlur={() => saveFocus.mutate(focusNow())} />
           </div>
           <div className="text-xs muted">The subject's moments lead the edit, its key action lands on the drop, other animals only build tension. Works without the Director.</div>
+          <label className="label">Look</label>
+          <select className="input" value={project.data?.options?.look ?? 'normal'} onChange={e => api.patchProject(pid, { options: { look: e.target.value } } as any).then(invalidate)}><option value="light">Lighter grade (half the darkening)</option><option value="normal">Normal</option><option value="heavy">Heavier</option></select>
+          <label className="label">Pace</label>
+          <select className="input" value={project.data?.options?.pace ?? 'hard'} onChange={e => api.patchProject(pid, { options: { pace: e.target.value } } as any).then(invalidate)}><option value="hard">Hard cuts (a cut every beat or two)</option><option value="medium">Medium</option><option value="slow">Let clips play out</option></select>
           <label className="label">More direction (optional)</label>
           <textarea className="input text-sm" rows={5} value={brief ?? (project.data?.options?.brief ?? '')} onChange={e => setBrief(e.target.value)} onBlur={() => { if (brief !== null) saveBrief.mutate(brief) }}
             placeholder={'Your vision and the moments that matter, with timestamps in the clip:\n- the drop should hit when the iguana breaks free at 2:41\n- open on the snakes creeping at 0:35\n- title: THE IGUANA\n- dark, fast, no flashes'} />

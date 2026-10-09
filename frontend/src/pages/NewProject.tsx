@@ -19,12 +19,18 @@ export default function NewProject() {
   const [animal, setAnimal] = useState('')
   const [subject, setSubject] = useState('')
   const [action, setAction] = useState('')
+  const [pace, setPace] = useState('hard')
+  const [look, setLook] = useState('normal')
+  const [frame, setFrame] = useState('fill')
   const [edits, setEdits] = useState('as_many')
   const create = useMutation({
     mutationFn: async () => {
       const preset = cfg.data?.presets.find(p => p.id === style)
       const options: Record<string, any> = { intensity }
       if (!isDoc && subject.trim()) options.focus = { subject: subject.trim(), action: action.trim() }
+      if (pace !== 'hard') options.pace = pace
+      if (look !== 'normal') options.look = look
+      if (frame !== 'fill') options.frame = { '16:9': 16 / 9, '1.2:1': 1.2, '4:3': 4 / 3 }[frame]
       if (isDoc) options.documentary = { path: docPath.trim() || undefined, animal: animal.trim() || 'auto', edits, target_min: 60, target_max: 70 }
       return api.createProject({ name: name.trim() || (isDoc ? 'Documentary edits' : 'Untitled'), style, aspect: aspect || preset?.default_aspect, target_length: isDoc ? '65' : length, mode, audio_export: audio, options } as any)
     },
@@ -73,6 +79,11 @@ export default function NewProject() {
           {!isDoc && <div><label className="label">Length</label><select className="input" value={length} onChange={e => setLength(e.target.value)}>{(cfg.data?.target_lengths ?? ['15', '30', '45', '60', 'song']).map(l => <option key={l} value={l}>{l === 'song' ? 'match song' : `${l} s`}</option>)}</select></div>}
           {isDoc && <div><label className="label">Length</label><div className="input muted">60 to 70 s</div></div>}
           <div><label className="label">Intensity</label><select className="input" value={intensity} onChange={e => setIntensity(e.target.value)}><option value="low">low</option><option value="med">med</option><option value="high">high</option></select></div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div><label className="label">Pace</label><select className="input" value={pace} onChange={e => setPace(e.target.value)}><option value="hard">Hard cuts (a cut every beat or two)</option><option value="medium">Medium</option><option value="slow">Let clips play out</option></select></div>
+          <div><label className="label">Look</label><select className="input" value={look} onChange={e => setLook(e.target.value)}><option value="light">Lighter grade (half the darkening)</option><option value="normal">Normal</option><option value="heavy">Heavier</option></select></div>
+          <div><label className="label">Framing</label><select className="input" value={frame} onChange={e => setFrame(e.target.value)}><option value="fill">Fill the frame (crop to the aspect)</option><option value="16:9">16:9 picture, black above and below</option><option value="1.2:1">1.2:1 box, black above and below</option><option value="4:3">4:3 box</option></select></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Timing</label><select className="input" value={mode} onChange={e => { const m = e.target.value as any; setMode(m); if (m === 'visual' && audio === 'mixed') setAudio('silent') }}><option value="music">Music-synced (I provide a phonk track)</option><option value="visual">Visual peaks (no music)</option></select></div>
