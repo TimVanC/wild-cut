@@ -340,7 +340,9 @@ class Planner:
             self.notes.append("No usable moments: analyze footage first.")
             self.edl["notes"] = self.notes
             return self.edl
-        if self.req.mode == "music" and self.req.grid and self.req.grid.beats:
+        if str(self.req.options.get("pace") or "") == "asis":
+            self.plan_asis()
+        elif self.req.mode == "music" and self.req.grid and self.req.grid.beats:
             self.plan_music()
         else:
             if self.req.mode == "music":
@@ -365,6 +367,61 @@ class Planner:
             if k in out:
                 out[k] = out[k] * min(mult, 2.0)
         return out
+
+    def plan_asis(self) -> None:
+        """Keep my cut: Tim's clips play straight through, in order, at full length (a hand-cut reference).
+        Nothing is re-trimmed or reordered; the song starts at 0, the title sits on the drop, effects follow
+        the beat grid, and holds / framing set on a clip are kept."""
+        req, grid = self.req, self.req.grid
+        existing = {}
+        for c in self.existing.get("clips", []):
+            existing.setdefault(c.get("clip_id"), c)
+        entries = []
+        for clip in req.clips:
+            ms = [m for m in self.pool if m.clip_id == clip.id] or [m for m in req.moments if m.clip_id == clip.id]
+            if not ms:
+                continue
+            m = max(ms, key=self.adjusted)
+            e = self.make_clip(m, 0.0, clip.duration, "build", speed=None)
+            old = existing.get(clip.id)
+            if old:
+                carry_frame(e, old)
+            e["tl_duration"] = round(edlmod.clip_tl_duration(e), 4)
+            entries.append(e)
+        if not entries:
+            self.notes.append("No usable clips.")
+            return
+        self.edl["clips"] = entries
+        edlmod.relayout(self.edl)
+        L = float(self.edl["duration"])
+        hero = entries[0]
+        D = None
+        beats: list[float] = []
+        downbeats: list[float] = []
+        hits: list[float] = []
+        if req.mode == "music" and grid and grid.beats:
+            we = min(float(grid.duration), L)
+            beats = [round(b, 4) for b in grid.beats_in(0.0, we)]
+            downbeats = [round(b, 4) for b in grid.downbeats_in(0.0, we)]
+            hits = [round(b, 4) for b in grid.bass_hits_in(0.0, we)]
+            if grid.chosen_drop is not None and 0.0 < grid.chosen_drop < we:
+                D = round(float(grid.chosen_drop), 4)
+                hero = edlmod.clip_at(self.edl, D) or entries[0]
+                hero["role"] = "hero"
+                hero["peak"] = round(edlmod.source_time_at(hero, D - hero["start"])[0], 4)
+            self.edl["audio"]["song_window"] = {"start": 0.0, "end": round(we, 3)}
+            self.edl["audio"]["sound_offset"] = 0.0
+            if L > we + 0.5:
+                self.notes.append(f"The song ({we:.0f}s) is shorter than the footage ({L:.0f}s); the end plays without music.")
+        self.edl["markers"] = {"drop": D, "hero_peak": edlmod.peak_timeline(hero) if D is not None else None,
+                               "beats": beats, "downbeats": downbeats, "bass_hits": hits}
+        self.edl["sections"] = [{"name": "cut", "start": 0.0, "end": round(L, 3)}]
+        if D is not None:
+            self.add_music_effects(beats, downbeats, hits, D, hero)
+            self.add_title(hero, D)
+        else:
+            self.add_title(hero, min(L, 2.0))
+        self.notes.append("Keep my cut: the clips play straight through; only the title, the effects and your holds were added.")
 
     def plan_music(self) -> None:
         req, grid, preset = self.req, self.req.grid, self.preset

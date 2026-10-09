@@ -390,7 +390,8 @@ def _chat(s: Session, job: Job, progress) -> dict:
     from wildcut.director.agent import run_turn
 
     project = s.get(Project, job.project_id)
-    result = run_turn(s, project, job.payload.get("message", ""), progress)
+    # the brief is the one big turn (it builds the whole edit); ordinary turns stay on the small cap
+    result = run_turn(s, project, job.payload.get("message", ""), progress, turn_budget=1.5 if job.payload.get("brief") else None)
     if result.get("edl_changed") and job.payload.get("then_preview", True):
         enqueue(s, project.id, "preview", {})
     return result

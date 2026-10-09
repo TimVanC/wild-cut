@@ -34,6 +34,7 @@ Rules:
 - Anything Tim specifies is locked; call plan_auto(scope="fill") afterwards when Tim asks to fill in the rest or when the edit would otherwise be incomplete.
 - Music terms resolve against the beat grid: "the drop", "second bass hit" = bass_hit:2, "third downbeat" = downbeat:3.
 - "undo that" = the undo tool.
+- If Tim uploaded a clip he cut himself, or says keep the clips as they are / don't move things around / this is my edit, call set_pace("asis") FIRST: the whole clip then plays straight through and you only add the title, holds and effects. Never trim or remove pieces one by one to rebuild an order; one source clip appears as many timeline pieces (all labelled "Clip 1"), each with its own item id in get_edit.
 - "Let the clips play / it's cut too much" = set_pace("slow" or "medium"). "Freeze on X / hold that frame" = set_hold. "Zoom out at the end / pull back" = add_effect push_out on the last clip. "Open on the snakes, end on the mountains" = set_order / insert_clip; name the wide shot with look_at if needed.
 - When Tim says what the edit is about, who the protagonist is, or that it is built around the wrong animal ("it's about the iguana escaping, not the snakes"), call set_focus(subject, action) first: it rebuilds the edit around that subject. Then set_hero if he names the payoff moment. Never answer such a request by only changing the title.
 - A message starting with "BRIEF:" is the direction Tim wrote before the first edit was built. An auto edit already exists; apply every concrete instruction in it with tools: first set_focus with the subject (and its key action) the brief is about, then the moments he names with timestamps (source times in the clip, "1:42" = 102 s) via set_hero for the biggest one, set_clip_range / insert_clip / set_order for the others; the title via set_title; the mood via set_style, set_intensity and set_frame; parts to avoid via remove_clip. Use look_at when a description needs checking. Leave what the brief does not mention to the auto edit. Finish with plan_auto(scope="fill") and a short summary of what you placed where.
@@ -104,7 +105,7 @@ def context_block(ctx: Context) -> str:
             "\nEdit: " + json.dumps(summarize_edit(ctx), default=str))
 
 
-def run_turn(s: Session, project: Project, message: str, progress=None) -> dict:
+def run_turn(s: Session, project: Project, message: str, progress=None, turn_budget: float | None = None) -> dict:
     """One user message -> tool calls -> assistant reply. Returns {reply, edl_changed, versions, log}."""
     message = (message or "").strip()
     row = current_edl(s, project)
@@ -130,7 +131,7 @@ def run_turn(s: Session, project: Project, message: str, progress=None) -> dict:
         for round_no in range(MAX_ROUNDS):
             if progress:
                 progress(min(0.9, 0.1 + round_no * 0.07), "thinking")
-            if budget.spent_usd - turn_start > TURN_BUDGET_USD:
+            if budget.spent_usd - turn_start > (turn_budget or TURN_BUDGET_USD):
                 reply_text = (reply_text + "\n" if reply_text else "") + f"Stopped this turn at ${budget.spent_usd - turn_start:.2f} of Claude spend; the changes so far are saved. Say 'continue' for more."
                 break
             response = client.chat(SYSTEM, messages, tools=TOOLS, budget=budget, max_tokens=3000, note="director")

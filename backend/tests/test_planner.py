@@ -346,3 +346,31 @@ def test_landscape_output_and_light_look(footage, grid):
     assert normal["grade"]["lut_strength"] == 1.0
     edl_ops.set_look(normal, "heavy")
     assert normal["grade"]["look"] == "heavy" and normal["grade"]["contrast"] > 1.12
+
+
+def test_keep_my_cut_plays_clips_straight_through(footage, grid):
+    """pace 'asis': Tim's hand-cut clip is not re-trimmed or reordered; title on the drop, effects on the grid,
+    and a hold set on a clip survives the re-plan."""
+    from wildcut.planner import edl as edlmod
+    from wildcut.services import edl_ops
+
+    clips, _ = footage
+    e = plan(_req(footage, grid, seed=3, options={"pace": "asis"}))
+    assert [c["clip_id"] for c in e["clips"]] == [c.id for c in clips]
+    for c, info in zip(e["clips"], clips):
+        assert c["in"] == 0.0 and abs(c["out"] - info.duration) < 1e-6 and c.get("speed") is None
+    assert abs(e["duration"] - sum(c.duration for c in clips)) < 0.05
+    assert e["audio"]["song_window"]["start"] == 0.0 and e["audio"]["sound_offset"] == 0.0
+    drop = e["markers"]["drop"]
+    assert drop is not None and e["text"][0]["t"] == drop
+    hero = next(c for c in e["clips"] if c["role"] == "hero")
+    assert hero["start"] <= drop < hero["start"] + hero["tl_duration"]
+    assert abs(edlmod.peak_timeline(hero) - drop) <= 1 / e["fps"]
+    assert e["effects"], "phonk effects still follow the beat grid"
+    assert any("Keep my cut" in n for n in e["notes"])
+    # a freeze set by hand is kept when the edit is re-planned in this mode
+    c0 = e["clips"][0]
+    edl_ops.set_hold(e, c0["id"], 1.0, 2.0)
+    again = plan(_req(footage, grid, seed=3, options={"pace": "asis"}, existing=e))
+    assert again["clips"][0].get("hold") == {"at": 1.0, "seconds": 2.0}
+    assert abs(again["duration"] - (e["duration"])) < 0.05

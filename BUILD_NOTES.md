@@ -207,6 +207,14 @@ filters / classification / two distinct edits.
   filters were "really dark"), Director `set_look`. 16:9 output renders 1920x1080 (the render
   width is the short side for landscape), combined with `frame` 1.2 it gives Tim's "zoomed so
   the sides go off screen" look inside a landscape export.
+- "Keep my cut" (`options.pace = "asis"`): Tim uploaded a 54 s clip he had already cut by hand,
+  the planner chopped it into beat-sized pieces (24 timeline items all labelled "Clip 1"), and the
+  Director, told to keep the order, trimmed and removed pieces one by one until a 2-second edit was
+  left, which Tim exported twice. `plan_asis` lays the clips out in order at full length, song from 0,
+  title on the drop, effects on the grid, holds and framing kept; the Director is told to call
+  `set_pace("asis")` first in that situation, and `set_clip_range` / `remove_clip` take an
+  `item_id` so a specific piece can be addressed. The brief turn gets a $1.50 cap (other turns
+  $0.60); `push_out` was missing from the Director's add_effect whitelist.
 - Cancel (Tim deleted a project whose 30-minute Canva export was being analyzed, and the worker
   kept grinding on it for the deleted project, blocking the heavy lane): the job progress
   callback now checks the job's status and the project's existence on every tick and raises

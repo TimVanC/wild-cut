@@ -81,7 +81,7 @@ export default function NewProject() {
           <div><label className="label">Intensity</label><select className="input" value={intensity} onChange={e => setIntensity(e.target.value)}><option value="low">low</option><option value="med">med</option><option value="high">high</option></select></div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div><label className="label">Pace</label><select className="input" value={pace} onChange={e => setPace(e.target.value)}><option value="hard">Hard cuts (a cut every beat or two)</option><option value="medium">Medium</option><option value="slow">Let clips play out</option></select></div>
+          <div><label className="label">Pace</label><select className="input" value={pace} onChange={e => setPace(e.target.value)}><option value="hard">Hard cuts (a cut every beat or two)</option><option value="medium">Medium</option><option value="slow">Let clips play out</option><option value="asis">Keep my cut (clips play straight through; only title, effects and holds are added)</option></select></div>
           <div><label className="label">Look</label><select className="input" value={look} onChange={e => setLook(e.target.value)}><option value="light">Lighter grade (half the darkening)</option><option value="normal">Normal</option><option value="heavy">Heavier</option></select></div>
           <div><label className="label">Framing</label><select className="input" value={frame} onChange={e => setFrame(e.target.value)}><option value="fill">Fill the frame (crop to the aspect)</option><option value="16:9">16:9 picture, black above and below</option><option value="1.2:1">1.2:1 box, black above and below</option><option value="4:3">4:3 box</option></select></div>
         </div>

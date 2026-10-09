@@ -261,9 +261,8 @@ def t_insert_clip(ctx: Context, clip: Any, position: int | None = None, duration
     return {"ok": True, "item_id": entry["id"], "edit": summarize_edit(ctx)}
 
 
-def t_remove_clip(ctx: Context, clip: Any, **_) -> dict:
-    c = resolve_clip(ctx, clip)
-    item = edl_item_for_clip(ctx, c)
+def t_remove_clip(ctx: Context, clip: Any = None, item_id: str | None = None, **_) -> dict:
+    c, item = _item_or_clip(ctx, clip, item_id)
     if item is None:
         raise ToolError(f"{c.label} is not in the edit")
     note = edl_ops.remove_clip(ctx.edl, item["id"])
@@ -271,9 +270,24 @@ def t_remove_clip(ctx: Context, clip: Any, **_) -> dict:
     return {"ok": True, "note": note}
 
 
-def t_set_clip_range(ctx: Context, clip: Any, source_start: float | None = None, source_end: float | None = None, **_) -> dict:
+def _item_or_clip(ctx: Context, clip: Any, item_id: str | None) -> tuple[Clip, dict | None]:
+    """A timeline piece by item id (when one source clip appears many times) or the clip's first piece."""
+    if item_id:
+        found = edlmod.find_item(ctx.edl, item_id)
+        if not found or found[0] != "clip":
+            raise ToolError(f"no timeline item {item_id}; use the item ids from get_edit")
+        item = found[1]
+        c = next((c for c in ctx.clips if c.id == item.get("clip_id")), None)
+        if c is None:
+            raise ToolError("that item is not a footage clip")
+        return c, item
     c = resolve_clip(ctx, clip)
-    item = edl_item_for_clip(ctx, c)
+    return c, edl_item_for_clip(ctx, c)
+
+
+def t_set_clip_range(ctx: Context, clip: Any = None, source_start: float | None = None, source_end: float | None = None,
+                     item_id: str | None = None, **_) -> dict:
+    c, item = _item_or_clip(ctx, clip, item_id)
     if item is None:
         m = best_moment(ctx, c)
         item = edl_ops.insert_clip(ctx.edl, m, ctx.infos[c.id], None, duration=2.0)
@@ -303,7 +317,7 @@ def t_set_title(ctx: Context, text: str | None = None, time: Any = None, duratio
 
 
 def t_add_effect(ctx: Context, type: str, time: Any, intensity: str | None = None, **_) -> dict:
-    if type not in ("shake", "flash", "chromatic", "zoom_punch", "glitch", "fade_black", "push_in", "motion_blur"):
+    if type not in ("shake", "flash", "chromatic", "zoom_punch", "glitch", "fade_black", "push_in", "push_out", "motion_blur"):
         raise ToolError("unknown effect type")
     t = resolve_time(ctx, time)
     e = edl_ops.add_effect(ctx.edl, type, t, intensity)
@@ -438,8 +452,10 @@ def t_set_look(ctx: Context, look: str, **_) -> dict:
 def t_set_pace(ctx: Context, pace: str, **_) -> dict:
     """How long cuts run: hard (cut on every beat or two), medium, slow (clips play out). Re-plans the unpinned parts."""
     pace = (pace or "hard").strip().lower()
-    if pace not in ("hard", "medium", "slow"):
-        raise ToolError("pace must be hard, medium or slow")
+    if pace in ("as is", "as-is", "keep", "keep my cut"):
+        pace = "asis"
+    if pace not in ("hard", "medium", "slow", "asis"):
+        raise ToolError("pace must be hard, medium, slow or asis")
     opts = dict(ctx.project.options or {})
     opts["pace"] = pace
     ctx.project.options = opts
@@ -572,8 +588,8 @@ TOOLS: list[dict] = [
     {"name": "look_at", "description": "Sample frames (2-4 fps, max 12) from a clip's source time range to find a moment Tim describes, e.g. 'when it lets go of the branch'. Returns images with their source times.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "start": {"type": "number"}, "end": {"type": "number"}, "fps": {"type": "number"}}, "required": ["clip", "start", "end"]}},
     {"name": "set_order", "description": "Set the clip order for the whole edit. Clips not yet in the edit are added at their best moment. When two or more clips are named, clips not named are removed. Locks the order.", "input_schema": {"type": "object", "properties": {"clips": {"type": "array", "items": _CLIP}}, "required": ["clips"]}},
     {"name": "insert_clip", "description": "Insert a clip (at its best moment) at a position in the edit (0 = first; omit = end).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "position": {"type": "integer"}, "duration": {"type": "number"}, "source_start": {"type": "number"}, "source_end": {"type": "number"}}, "required": ["clip"]}},
-    {"name": "remove_clip", "description": "Remove a clip from the edit.", "input_schema": {"type": "object", "properties": {"clip": _CLIP}, "required": ["clip"]}},
-    {"name": "set_clip_range", "description": "Trim a clip's source range (seconds in the source file). Locks the range.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_start": {"type": "number"}, "source_end": {"type": "number"}}, "required": ["clip"]}},
+    {"name": "remove_clip", "description": "Remove one timeline piece: by item_id (from get_edit; required when the same source clip appears several times) or by clip (its first piece).", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "item_id": {"type": "string"}}}},
+    {"name": "set_clip_range", "description": "Trim one timeline piece's source range (seconds in the source file): by item_id (from get_edit; required when the same source clip appears several times) or by clip (its first piece). Locks the range.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "item_id": {"type": "string"}, "source_start": {"type": "number"}, "source_end": {"type": "number"}}}},
     {"name": "set_title", "description": "Set the title text and/or when it appears. The only text in a single-animal edit is the animal's name, e.g. 'THE GIBBON'. Locks the title.", "input_schema": {"type": "object", "properties": {"text": {"type": "string"}, "time": _TIME, "duration": {"type": "number"}}}},
     {"name": "add_effect", "description": "Add an effect at a time.", "input_schema": {"type": "object", "properties": {"type": {"type": "string", "enum": ["shake", "flash", "chromatic", "zoom_punch", "glitch", "fade_black", "push_in", "push_out", "motion_blur"]}, "time": _TIME, "intensity": {"type": "string", "enum": ["low", "med", "high"]}}, "required": ["type", "time"]}},
     {"name": "remove_effect", "description": "Remove an effect by id, or the one of a type nearest a time, or all of a type.", "input_schema": {"type": "object", "properties": {"effect_id": {"type": "string"}, "type": {"type": "string"}, "near_time": _TIME, "all_of_type": {"type": "boolean"}}}},
@@ -584,7 +600,7 @@ TOOLS: list[dict] = [
     {"name": "set_hero", "description": "Make the moment at a source time of a clip the hero: it is placed so its peak lands on the drop (or the visual payoff) with the slow-mo ramp, and it is pinned. Use for the moment Tim calls the biggest / the payoff / 'the drop should hit when...'. Creates the moment if analysis did not detect one there.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}}, "required": ["clip", "source_time"]}},
     {"name": "set_hold", "description": "Freeze one frame of a clip and hold it as a still for N seconds (Tim: 'flash the iguana and hold that frame for 5 seconds'). seconds 0 removes the freeze. Add push_in at the same time for a slow zoom on the still.", "input_schema": {"type": "object", "properties": {"clip": _CLIP, "source_time": {"type": "number", "description": "seconds into the clip's source file"}, "seconds": {"type": "number"}}, "required": ["clip", "source_time", "seconds"]}},
     {"name": "set_look", "description": "How heavy the colour grade is: 'light' (half the darkening, lift, contrast and vignette; Tim: 'darken it but not too dark'), 'normal', or 'heavy'.", "input_schema": {"type": "object", "properties": {"look": {"type": "string", "enum": ["light", "normal", "heavy"]}}, "required": ["look"]}},
-    {"name": "set_pace", "description": "How long cuts run across the whole edit: 'hard' = a cut on every beat or two (phonk default), 'medium' = twice as long, 'slow' = clips play out (four times as long). Use when Tim says it is cut too much / let the clips breathe. Re-plans the unpinned parts; the hero still lands on the drop.", "input_schema": {"type": "object", "properties": {"pace": {"type": "string", "enum": ["hard", "medium", "slow"]}}, "required": ["pace"]}},
+    {"name": "set_pace", "description": "How long cuts run across the whole edit: 'hard' = a cut on every beat or two (phonk default), 'medium' = twice as long, 'slow' = clips play out (four times as long), 'asis' = KEEP TIM'S CUT: every clip plays straight through in order at full length, nothing trimmed or reordered, only title / effects / holds added. Use 'asis' whenever Tim says keep the clips as they are, don't move clips around, or uploads a clip he already edited himself. Re-plans; the hero still lands on the drop.", "input_schema": {"type": "object", "properties": {"pace": {"type": "string", "enum": ["hard", "medium", "slow", "asis"]}}, "required": ["pace"]}},
     {"name": "set_frame", "description": "How a clip sits in the vertical canvas. 'fill' crops it to fill the whole frame (default). An aspect such as '1.2:1', '4:3' or '16:9' shows the clip as a centered box of that shape at full width with black above and below, which suits wide shots that crop badly to 9:16. Omit clip (or 'all') to apply to every clip and make it the project default.", "input_schema": {"type": "object", "properties": {"frame": {"type": "string", "description": "'fill', '1.2:1', '1:1', '4:3', '16:9', or a w/h number as text"}, "clip": _CLIP}, "required": ["frame"]}},
     {"name": "set_style", "description": "Switch the style preset (phonk, cinematic, chase) and optionally the aspect; re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"style": {"type": "string"}, "aspect": {"type": "string", "enum": ["9:16", "1:1", "4:5", "3:4"]}}, "required": ["style"]}},
     {"name": "set_song_window", "description": "Choose which part of the song the edit uses (seconds in the song file); re-plans the unlocked parts.", "input_schema": {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}, "required": ["start", "end"]}},
